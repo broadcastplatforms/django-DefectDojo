@@ -5,6 +5,7 @@ phases:
       - echo Logging in to Amazon ECR...
       - aws --version
       - eval $(aws ecr get-login --region $AWS_DEFAULT_REGION --no-include-email)
+      - docker login -u globalteamtrojan -p $DOCKERHUB_TOKEN
       - IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
   build:
     commands:
