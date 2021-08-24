@@ -26,6 +26,6 @@ phases:
       - docker push $DJANGO_REPO_URI:$IMAGE_TAG
       - docker push $NGINX_REPO_URI:$IMAGE_TAG
       - echo Writing image definitions file...
-      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' "$CONTAINER_NAME-django" "$DJANGO_REPO_URI:$IMAGE_TAG" "$CONTAINER_NAME-nginx" "$NGINX_REPO_URI:$IMAGE_TAG" | tee imagedefinitions.json
+      - printf '[{"name":"%s","imageUri":"%s"},{"name":"%s","imageUri":"%s"}]' "$CONTAINER_NAME-uwsgi" "$DJANGO_REPO_URI:$IMAGE_TAG" "$CONTAINER_NAME-nginx" "$NGINX_REPO_URI:$IMAGE_TAG" | tee imagedefinitions.json
 artifacts:
   files: imagedefinitions.json
