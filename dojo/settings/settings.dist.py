@@ -193,6 +193,7 @@ env = environ.Env(
     DD_RATE_LIMITER_BLOCK=(bool, False),
     # Forces the user to change password on next login.
     DD_RATE_LIMITER_ACCOUNT_LOCKOUT=(bool, False),
+    DD_CSRF_TRUSTED_ORIGINS=(list, []),
 )
 
 
@@ -463,6 +464,7 @@ SLA_NOTIFY_POST_BREACH = env('DD_SLA_NOTIFY_POST_BREACH')  # in days, skip notif
 SEARCH_MAX_RESULTS = env('DD_SEARCH_MAX_RESULTS')
 SIMILAR_FINDINGS_MAX_RESULTS = env('DD_SIMILAR_FINDINGS_MAX_RESULTS')
 MAX_AUTOCOMPLETE_WORDS = env('DD_MAX_AUTOCOMPLETE_WORDS')
+CSRF_TRUSTED_ORIGINS = env('DD_CSRF_TRUSTED_ORIGINS')
 
 LOGIN_EXEMPT_URLS = (
     r'^%sstatic/' % URL_PREFIX,
