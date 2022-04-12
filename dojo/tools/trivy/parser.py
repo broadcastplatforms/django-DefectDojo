@@ -74,7 +74,6 @@ class TrivyParser:
                     package_name = vuln['PkgName']
                     severity = TRIVY_SEVERITIES[vuln['Severity']]
                 except KeyError as exc:
-                    print(vuln)
                     logger.warning('skip vulnerability due %r', exc)
                     continue
                 package_version = vuln.get('InstalledVersion', '')
@@ -84,6 +83,7 @@ class TrivyParser:
                     cwe = int(vuln['CweIDs'][0].split("-")[1])
                 else:
                     cwe = 0
+                type = target_data.get('Type', '')
                 title = ' '.join([
                     vuln_id,
                     package_name,
@@ -92,11 +92,12 @@ class TrivyParser:
                 description = DESCRIPTION_TEMPLATE.format(
                     title=vuln.get('Title', ''),
                     target=target,
-                    type=target_data.get('Type', ''),
+                    type=type,
                     fixed_version=mitigation,
                     description_text=vuln.get('Description', ''),
                 )
                 cvss = vuln.get('CVSS', None)
+                cvssv3 = None
                 if cvss is not None:
                     nvd = cvss.get('nvd', None)
                     if nvd is not None:
@@ -116,6 +117,7 @@ class TrivyParser:
                         cvssv3=cvssv3,
                         static_finding=True,
                         dynamic_finding=False,
+                        tags=[type],
                     )
                 )
         return items

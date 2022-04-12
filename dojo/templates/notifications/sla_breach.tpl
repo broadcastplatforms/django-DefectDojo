@@ -31,7 +31,7 @@
                 <br/></br>
                 Kind regards,
                 </br></br>
-                {% if system_settings.team_name and system_settings.team_name %}
+                {% if system_settings.team_name %}
                     {{ system_settings.team_name }}
                 {% else %}
                     Defect Dojo
@@ -76,6 +76,14 @@
                 "activityImage": "https://raw.githubusercontent.com/DefectDojo/django-DefectDojo/master/dojo/static/dojo/img/chop.png",
                 "text": "A SLA for a finding has been breached.",
                 "facts": [
+                    {
+                        "name": "Product:",
+                        "value": "{{ finding.test.engagement.product.name }}"
+                    },
+                    {
+                        "name": "Engagement:",
+                        "value": "{{ finding.test.engagement.name }}"
+                    },
                     {
                         "name": "Finding:",
                         "value": "{{ finding.title }}"

@@ -7,29 +7,28 @@ from datetime import datetime, date, timedelta
 from math import ceil
 from dateutil.relativedelta import relativedelta
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.urls import reverse
-from django.http import HttpResponseRedirect
+from django.http import HttpResponseRedirect, Http404
 from django.shortcuts import render, get_object_or_404
 from django.utils import timezone
 from django.db.models import Sum, Count, Q, Max
 from django.contrib.admin.utils import NestedObjects
 from django.db import DEFAULT_DB_ALIAS, connection
 
-from dojo.endpoint.utils import endpoint_get_or_create
 from dojo.templatetags.display_tags import get_level
 from dojo.filters import ProductEngagementFilter, ProductFilter, EngagementFilter, MetricsEndpointFilter, MetricsFindingFilter, ProductComponentFilter
 from dojo.forms import ProductForm, EngForm, DeleteProductForm, DojoMetaDataForm, JIRAProjectForm, JIRAFindingForm, AdHocFindingForm, \
-                       EngagementPresetsForm, DeleteEngagementPresetsForm, Sonarqube_ProductForm, ProductNotificationsForm, \
+                       EngagementPresetsForm, DeleteEngagementPresetsForm, ProductNotificationsForm, \
                        GITHUB_Product_Form, GITHUBFindingForm, AppAnalysisForm, JIRAEngagementForm, Add_Product_MemberForm, \
                        Edit_Product_MemberForm, Delete_Product_MemberForm, Add_Product_GroupForm, Edit_Product_Group_Form, Delete_Product_GroupForm, \
-                       DeleteAppAnalysisForm
-from dojo.models import Product_Type, Note_Type, Finding, Product, Engagement, Test, GITHUB_PKey, Finding_Template, \
+                       DeleteAppAnalysisForm, Product_API_Scan_ConfigurationForm, DeleteProduct_API_Scan_ConfigurationForm
+from dojo.models import Product_Type, Note_Type, Finding, Product, Engagement, Test, GITHUB_PKey, \
                         Test_Type, System_Settings, Languages, App_Analysis, Benchmark_Type, Benchmark_Product_Summary, Endpoint_Status, \
-                        Endpoint, Engagement_Presets, DojoMeta, Sonarqube_Product, Notifications, BurpRawRequestResponse, Product_Member, \
-                        Product_Group
+                        Endpoint, Engagement_Presets, DojoMeta, Notifications, BurpRawRequestResponse, Product_Member, \
+                        Product_Group, Product_API_Scan_Configuration
 from dojo.utils import add_external_issue, add_error_message_to_response, add_field_errors_to_response, get_page_items, add_breadcrumb, \
-                       get_system_setting, Product_Tab, get_punchcard_data, queryset_check, is_title_in_breadcrumbs
+                       get_system_setting, Product_Tab, get_punchcard_data, queryset_check, is_title_in_breadcrumbs, get_enabled_notifications_list
 
 from dojo.notifications.helper import create_notification
 from django.db.models import Prefetch, F, OuterRef, Subquery
@@ -39,11 +38,12 @@ from django.contrib.postgres.aggregates import StringAgg
 from dojo.components.sql_group_concat import Sql_GroupConcat
 import dojo.jira_link.helper as jira_helper
 from dojo.authorization.authorization import user_has_permission, user_has_permission_or_403
-from django.conf import settings
 from dojo.authorization.roles_permissions import Permissions
 from dojo.authorization.authorization_decorators import user_is_authorized
 from dojo.product.queries import get_authorized_products, get_authorized_members_for_product, get_authorized_groups_for_product
 from dojo.product_type.queries import get_authorized_members_for_product_type, get_authorized_groups_for_product_type
+from dojo.tool_config.factory import create_API
+import dojo.finding.helper as finding_helper
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +103,6 @@ def prefetch_for_product(prods):
                                                                                     engagement__test__finding__active=True,
                                                                                     engagement__test__finding__verified=True)))
         prefetched_prods = prefetched_prods.prefetch_related('jira_project_set__jira_instance')
-        prefetched_prods = prefetched_prods.prefetch_related('authorized_users')
-        prefetched_prods = prefetched_prods.prefetch_related('prod_type__authorized_users')
         prefetched_prods = prefetched_prods.prefetch_related('members')
         prefetched_prods = prefetched_prods.prefetch_related('prod_type__members')
         active_endpoint_query = Endpoint.objects.filter(
@@ -131,10 +129,9 @@ def iso_to_gregorian(iso_year, iso_week, iso_day):
     return start + timedelta(weeks=iso_week - 1, days=iso_day - 1)
 
 
-@user_is_authorized(Product, Permissions.Product_View, 'pid', 'view')
+@user_is_authorized(Product, Permissions.Product_View, 'pid')
 def view_product(request, pid):
     prod_query = Product.objects.all().select_related('product_manager', 'technical_contact', 'team_manager') \
-                                      .prefetch_related('authorized_users') \
                                       .prefetch_related('members') \
                                       .prefetch_related('prod_type__members')
     prod = get_object_or_404(prod_query, id=pid)
@@ -207,10 +204,11 @@ def view_product(request, pid):
         'product_type_members': product_type_members,
         'product_groups': product_groups,
         'product_type_groups': product_type_groups,
-        'personal_notifications_form': personal_notifications_form})
+        'personal_notifications_form': personal_notifications_form,
+        'enabled_notifications': get_enabled_notifications_list()})
 
 
-@user_is_authorized(Product, Permissions.Component_View, 'pid', 'view')
+@user_is_authorized(Product, Permissions.Component_View, 'pid')
 def view_product_components(request, pid):
     prod = get_object_or_404(Product, id=pid)
     product_tab = Product_Tab(pid, title="Product", tab="components")
@@ -319,8 +317,7 @@ def finding_querys(request, prod):
     # filters['accepted'] = [finding for ra in risk_acceptances for finding in ra.accepted_findings.all()]
 
     from dojo.finding.helper import ACCEPTED_FINDINGS_QUERY
-    filters['accepted'] = Finding.objects.filter(test__engagement__product=prod).filter(ACCEPTED_FINDINGS_QUERY).distinct()
-
+    filters['accepted'] = findings_qs.filter(ACCEPTED_FINDINGS_QUERY).filter(date__range=[start_date, end_date])
     filters['verified'] = findings_qs.filter(date__range=[start_date, end_date],
                                              false_p=False,
                                              active=True,
@@ -340,7 +337,6 @@ def finding_querys(request, prod):
                                          active=True,
                                          is_mitigated=False)
     filters['inactive'] = findings_qs.filter(date__range=[start_date, end_date],
-                                             false_p=False,
                                              duplicate=False,
                                              out_of_scope=False,
                                              active=False,
@@ -471,7 +467,7 @@ def endpoint_querys(request, prod):
     return filters
 
 
-@user_is_authorized(Product, Permissions.Product_View, 'pid', 'view')
+@user_is_authorized(Product, Permissions.Product_View, 'pid')
 def view_product_metrics(request, pid):
     prod = get_object_or_404(Product, id=pid)
     engs = Engagement.objects.filter(product=prod, active=True)
@@ -628,7 +624,7 @@ def view_product_metrics(request, pid):
                    'user': request.user})
 
 
-@user_is_authorized(Product, Permissions.Engagement_View, 'pid', 'view')
+@user_is_authorized(Product, Permissions.Engagement_View, 'pid')
 def view_engagements(request, pid):
     prod = get_object_or_404(Product, id=pid)
 
@@ -731,12 +727,9 @@ def new_product(request, ptid=None):
             gform = None
 
         if form.is_valid():
-            if settings.FEATURE_AUTHORIZATION_V2:
-                product_type = form.instance.prod_type
-                user_has_permission_or_403(request.user, product_type, Permissions.Product_Type_Add_Product)
-            else:
-                if not request.user.is_staff:
-                    raise PermissionDenied
+            product_type = form.instance.prod_type
+            user_has_permission_or_403(request.user, product_type, Permissions.Product_Type_Add_Product)
+
             product = form.save()
             messages.add_message(request,
                                  messages.SUCCESS,
@@ -775,13 +768,6 @@ def new_product(request, ptid=None):
                         except:
                             logger.info('Labels cannot be created - they may already exists')
 
-            # SonarQube API Configuration
-            sonarqube_form = Sonarqube_ProductForm(request.POST)
-            if sonarqube_form.is_valid():
-                sonarqube_product = sonarqube_form.save(commit=False)
-                sonarqube_product.product = product
-                sonarqube_product.save()
-
             create_notification(event='product_added', title=product.name,
                                 product=product,
                                 url=reverse('view_product', args=(product.id,)))
@@ -804,11 +790,10 @@ def new_product(request, ptid=None):
     return render(request, 'dojo/new_product.html',
                   {'form': form,
                    'jform': jira_project_form,
-                   'gform': gform,
-                   'sonarqube_form': Sonarqube_ProductForm()})
+                   'gform': gform})
 
 
-@user_is_authorized(Product, Permissions.Product_Edit, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_Edit, 'pid')
 def edit_product(request, pid):
     product = Product.objects.get(pk=pid)
     system_settings = System_Settings.objects.get()
@@ -818,7 +803,6 @@ def edit_product(request, pid):
     github_enabled = system_settings.enable_github
     github_inst = None
     gform = None
-    sonarqube_form = None
     error = False
 
     try:
@@ -826,8 +810,6 @@ def edit_product(request, pid):
     except:
         github_inst = None
         pass
-
-    sonarqube_conf = Sonarqube_Product.objects.filter(product=product).first()
 
     if request.method == 'POST':
         form = ProductForm(request.POST, instance=product)
@@ -861,18 +843,10 @@ def edit_product(request, pid):
                                          'GITHUB information updated successfully.',
                                          extra_tags='alert-success')
 
-            # SonarQube API Configuration
-            sonarqube_form = Sonarqube_ProductForm(request.POST, instance=sonarqube_conf)
-            if sonarqube_form.is_valid():
-                new_conf = sonarqube_form.save(commit=False)
-                new_conf.product_id = pid
-                new_conf.save()
-
             if not error:
                 return HttpResponseRedirect(reverse('view_product', args=(pid,)))
     else:
-        form = ProductForm(instance=product,
-                        initial={'auth_users': product.authorized_users.all()})
+        form = ProductForm(instance=product)
 
         if jira_enabled:
             jira_project = jira_helper.get_jira_project(product)
@@ -883,12 +857,10 @@ def edit_product(request, pid):
         if github_enabled and (github_inst is not None):
             if github_inst is not None:
                 gform = GITHUB_Product_Form(instance=github_inst)
+            else:
                 gform = GITHUB_Product_Form()
-            gform = GITHUB_Product_Form()
         else:
             gform = None
-
-        sonarqube_form = Sonarqube_ProductForm(instance=sonarqube_conf)
 
     product_tab = Product_Tab(pid, title="Edit Product", tab="settings")
     return render(request,
@@ -897,12 +869,11 @@ def edit_product(request, pid):
                    'product_tab': product_tab,
                    'jform': jform,
                    'gform': gform,
-                   'sonarqube_form': sonarqube_form,
                    'product': product
                    })
 
 
-@user_is_authorized(Product, Permissions.Product_Delete, 'pid', 'delete')
+@user_is_authorized(Product, Permissions.Product_Delete, 'pid')
 def delete_product(request, pid):
     product = get_object_or_404(Product, pk=pid)
     form = DeleteProductForm(instance=product)
@@ -948,7 +919,7 @@ def delete_product(request, pid):
                    })
 
 
-@user_is_authorized(Product, Permissions.Engagement_Add, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Engagement_Add, 'pid')
 def new_eng_for_app(request, pid, cicd=False):
     jira_project = None
     jira_project_form = None
@@ -956,8 +927,6 @@ def new_eng_for_app(request, pid, cicd=False):
 
     product = Product.objects.get(id=pid)
     jira_error = False
-    if not user_is_authorized(request.user, 'staff', product):
-        raise PermissionDenied
 
     if request.method == 'POST':
         form = EngForm(request.POST, cicd=cicd, product=product, user=request.user)
@@ -1045,7 +1014,7 @@ def new_eng_for_app(request, pid, cicd=False):
                    })
 
 
-@user_is_authorized(Product, Permissions.Technology_Add, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Technology_Add, 'pid')
 def new_tech_for_prod(request, pid):
     if request.method == 'POST':
         form = AppAnalysisForm(request.POST)
@@ -1067,7 +1036,7 @@ def new_tech_for_prod(request, pid):
                    'pid': pid})
 
 
-@user_is_authorized(App_Analysis, Permissions.Technology_Edit, 'tid', 'staff')
+@user_is_authorized(App_Analysis, Permissions.Technology_Edit, 'tid')
 def edit_technology(request, tid):
     technology = get_object_or_404(App_Analysis, id=tid)
     form = AppAnalysisForm(instance=technology)
@@ -1091,7 +1060,7 @@ def edit_technology(request, tid):
                    'technology': technology})
 
 
-@user_is_authorized(App_Analysis, Permissions.Technology_Delete, 'tid', 'staff')
+@user_is_authorized(App_Analysis, Permissions.Technology_Delete, 'tid')
 def delete_technology(request, tid):
     technology = get_object_or_404(App_Analysis, id=tid)
     form = DeleteAppAnalysisForm(instance=technology)
@@ -1113,13 +1082,13 @@ def delete_technology(request, tid):
     })
 
 
-@user_is_authorized(Product, Permissions.Engagement_Add, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Engagement_Add, 'pid')
 def new_eng_for_app_cicd(request, pid):
     # we have to use pid=pid here as new_eng_for_app expects kwargs, because that is how django calls the function based on urls.py named groups
     return new_eng_for_app(request, pid=pid, cicd=True)
 
 
-@user_is_authorized(Product, Permissions.Product_Edit, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_Edit, 'pid')
 def add_meta_data(request, pid):
     prod = Product.objects.get(id=pid)
     if request.method == 'POST':
@@ -1147,7 +1116,7 @@ def add_meta_data(request, pid):
                    })
 
 
-@user_is_authorized(Product, Permissions.Product_Edit, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_Edit, 'pid')
 def edit_meta_data(request, pid):
     prod = Product.objects.get(id=pid)
     if request.method == 'POST':
@@ -1178,9 +1147,10 @@ def edit_meta_data(request, pid):
                    })
 
 
-@user_is_authorized(Product, Permissions.Finding_Add, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Finding_Add, 'pid')
 def ad_hoc_finding(request, pid):
     prod = Product.objects.get(id=pid)
+    test_type, _ = Test_Type.objects.get_or_create(name="Pen Test")
     test = None
     try:
         eng = Engagement.objects.get(product=prod, name="Ad Hoc Engagement")
@@ -1189,25 +1159,25 @@ def ad_hoc_finding(request, pid):
         if len(tests) != 0:
             test = tests[0]
         else:
-            test = Test(engagement=eng, test_type=Test_Type.objects.get(name="Pen Test"),
+            test = Test(engagement=eng, test_type=test_type,
                         target_start=timezone.now(), target_end=timezone.now())
             test.save()
     except:
         eng = Engagement(name="Ad Hoc Engagement", target_start=timezone.now(),
                          target_end=timezone.now(), active=False, product=prod)
         eng.save()
-        test = Test(engagement=eng, test_type=Test_Type.objects.get(name="Pen Test"),
+        test = Test(engagement=eng, test_type=test_type,
                     target_start=timezone.now(), target_end=timezone.now())
         test.save()
     form_error = False
     push_all_jira_issues = jira_helper.is_push_all_issues(test)
     jform = None
     gform = None
-    form = AdHocFindingForm(initial={'date': timezone.now().date()}, req_resp=None)
+    form = AdHocFindingForm(initial={'date': timezone.now().date()}, req_resp=None, product=prod)
     use_jira = jira_helper.get_jira_project(test) is not None
 
     if request.method == 'POST':
-        form = AdHocFindingForm(request.POST, req_resp=None)
+        form = AdHocFindingForm(request.POST, req_resp=None, product=prod)
         if (form['active'].value() is False or form['false_p'].value()) and form['duplicate'].value() is False:
             closing_disabled = Note_Type.objects.filter(is_mandatory=True, is_active=True).count()
             if closing_disabled != 0:
@@ -1234,53 +1204,11 @@ def ad_hoc_finding(request, pid):
             new_finding.reporter = request.user
             new_finding.numerical_severity = Finding.get_numerical_severity(
                 new_finding.severity)
-            create_template = new_finding.is_template
-            # always false now since this will be deprecated soon in favor of new Finding_Template model
-            new_finding.is_template = False
             new_finding.tags = form.cleaned_data['tags']
             new_finding.save()
-            new_finding.endpoints.set(form.cleaned_data['endpoints'])
-            for endpoint in form.cleaned_data['endpoints']:
-                eps, created = Endpoint_Status.objects.get_or_create(
-                    finding=new_finding,
-                    endpoint=endpoint)
-                endpoint.endpoint_status.add(eps)
-                new_finding.endpoint_status.add(eps)
 
-            for endpoint in new_finding.unsaved_endpoints:
-                ep, created = endpoint_get_or_create(
-                    protocol=endpoint.protocol,
-                    userinfo=endpoint.userinfo,
-                    host=endpoint.host,
-                    port=endpoint.port,
-                    path=endpoint.path,
-                    query=endpoint.query,
-                    fragment=endpoint.fragment,
-                    product=test.engagement.product)
-                eps, created = Endpoint_Status.objects.get_or_create(
-                    finding=new_finding,
-                    endpoint=ep)
-                ep.endpoint_status.add(eps)
-
-                new_finding.endpoints.add(ep)
-                new_finding.endpoint_status.add(eps)
-            for endpoint in form.cleaned_data['endpoints']:
-                ep, created = endpoint_get_or_create(
-                    protocol=endpoint.protocol,
-                    userinfo=endpoint.userinfo,
-                    host=endpoint.host,
-                    port=endpoint.port,
-                    path=endpoint.path,
-                    query=endpoint.query,
-                    fragment=endpoint.fragment,
-                    product=test.engagement.product)
-                eps, created = Endpoint_Status.objects.get_or_create(
-                    finding=new_finding,
-                    endpoint=ep)
-                ep.endpoint_status.add(eps)
-
-                new_finding.endpoints.add(ep)
-                new_finding.endpoint_status.add(eps)
+            # Save and add new endpoints
+            finding_helper.add_endpoints(new_finding, form)
 
             new_finding.save()
             # Push to jira?
@@ -1338,37 +1266,11 @@ def ad_hoc_finding(request, pid):
                                  'Finding added successfully.',
                                  extra_tags='alert-success')
 
-            if create_template:
-                templates = Finding_Template.objects.filter(title=new_finding.title)
-                if len(templates) > 0:
-                    messages.add_message(request,
-                                         messages.ERROR,
-                                         'A finding template was not created.  A template with this title already '
-                                         'exists.',
-                                         extra_tags='alert-danger')
-                else:
-                    template = Finding_Template(title=new_finding.title,
-                                                cwe=new_finding.cwe,
-                                                severity=new_finding.severity,
-                                                description=new_finding.description,
-                                                mitigation=new_finding.mitigation,
-                                                impact=new_finding.impact,
-                                                references=new_finding.references,
-                                                numerical_severity=new_finding.numerical_severity)
-                    template.save()
-                    messages.add_message(request,
-                                         messages.SUCCESS,
-                                         'A finding template was also created.',
-                                         extra_tags='alert-success')
             if '_Finished' in request.POST:
                 return HttpResponseRedirect(reverse('view_test', args=(test.id,)))
             else:
                 return HttpResponseRedirect(reverse('add_findings', args=(test.id,)))
         else:
-            if 'endpoints' in form.cleaned_data:
-                form.fields['endpoints'].queryset = form.cleaned_data['endpoints']
-            else:
-                form.fields['endpoints'].queryset = Endpoint.objects.none()
             form_error = True
             add_error_message_to_response('The form has errors, please correct them below.')
             add_field_errors_to_response(jform)
@@ -1399,7 +1301,7 @@ def ad_hoc_finding(request, pid):
                    })
 
 
-@user_is_authorized(Product, Permissions.Product_View, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_View, 'pid')
 def engagement_presets(request, pid):
     prod = get_object_or_404(Product, id=pid)
     presets = Engagement_Presets.objects.filter(product=prod).all()
@@ -1412,7 +1314,7 @@ def engagement_presets(request, pid):
                    'prod': prod})
 
 
-@user_is_authorized(Product, Permissions.Product_Edit, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_Edit, 'pid')
 def edit_engagement_presets(request, pid, eid):
     prod = get_object_or_404(Product, id=pid)
     preset = get_object_or_404(Engagement_Presets, id=eid)
@@ -1438,7 +1340,7 @@ def edit_engagement_presets(request, pid, eid):
                    'prod': prod})
 
 
-@user_is_authorized(Product, Permissions.Product_Edit, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_Edit, 'pid')
 def add_engagement_presets(request, pid):
     prod = get_object_or_404(Product, id=pid)
     if request.method == 'POST':
@@ -1461,7 +1363,7 @@ def add_engagement_presets(request, pid):
     return render(request, 'dojo/new_params.html', {'tform': tform, 'pid': pid, 'product_tab': product_tab})
 
 
-@user_is_authorized(Product, Permissions.Product_Edit, 'pid', 'staff')
+@user_is_authorized(Product, Permissions.Product_Edit, 'pid')
 def delete_engagement_presets(request, pid, eid):
     prod = get_object_or_404(Product, id=pid)
     preset = get_object_or_404(Engagement_Presets, id=eid)
@@ -1491,7 +1393,7 @@ def delete_engagement_presets(request, pid, eid):
                    })
 
 
-@user_is_authorized(Product, Permissions.Product_View, 'pid', 'view')
+@user_is_authorized(Product, Permissions.Product_View, 'pid')
 def edit_notifications(request, pid):
     prod = get_object_or_404(Product, id=pid)
     if request.method == 'POST':
@@ -1606,6 +1508,139 @@ def delete_product_member(request, memberid):
         'form': memberform,
         'product_tab': product_tab,
     })
+
+
+@user_is_authorized(Product, Permissions.Product_API_Scan_Configuration_Add, 'pid')
+def add_api_scan_configuration(request, pid):
+
+    product = get_object_or_404(Product, id=pid)
+    if request.method == 'POST':
+        form = Product_API_Scan_ConfigurationForm(request.POST)
+        if form.is_valid():
+            product_api_scan_configuration = form.save(commit=False)
+            product_api_scan_configuration.product = product
+            try:
+                api = create_API(product_api_scan_configuration.tool_configuration)
+                if api and hasattr(api, 'test_product_connection'):
+                    result = api.test_product_connection(product_api_scan_configuration)
+                    messages.add_message(request,
+                                         messages.SUCCESS,
+                                         f'API connection successful with message: {result}.',
+                                         extra_tags='alert-success')
+                product_api_scan_configuration.save()
+                messages.add_message(request,
+                                     messages.SUCCESS,
+                                     'API Scan Configuration added successfully.',
+                                     extra_tags='alert-success')
+                if 'add_another' in request.POST:
+                    return HttpResponseRedirect(reverse('add_api_scan_configuration', args=(pid,)))
+                else:
+                    return HttpResponseRedirect(reverse('view_api_scan_configurations', args=(pid,)))
+            except Exception as e:
+                logger.exception(e)
+                messages.add_message(request,
+                                     messages.ERROR,
+                                     str(e),
+                                     extra_tags='alert-danger')
+    else:
+        form = Product_API_Scan_ConfigurationForm()
+
+    product_tab = Product_Tab(pid, title="Add API Scan Configuration", tab="settings")
+
+    return render(request,
+                  'dojo/add_product_api_scan_configuration.html',
+                  {'form': form,
+                   'product_tab': product_tab,
+                   'product': product,
+                   })
+
+
+@user_is_authorized(Product, Permissions.Product_View, 'pid')
+def view_api_scan_configurations(request, pid):
+
+    product_api_scan_configurations = Product_API_Scan_Configuration.objects.filter(product=pid)
+
+    product_tab = Product_Tab(pid, title="API Scan Configurations", tab="settings")
+    return render(request,
+                  'dojo/view_product_api_scan_configurations.html',
+                  {
+                      'product_api_scan_configurations': product_api_scan_configurations,
+                      'product_tab': product_tab,
+                      'pid': pid
+                  })
+
+
+@user_is_authorized(Product_API_Scan_Configuration, Permissions.Product_API_Scan_Configuration_Edit, 'pascid')
+def edit_api_scan_configuration(request, pid, pascid):
+
+    product_api_scan_configuration = get_object_or_404(Product_API_Scan_Configuration, id=pascid)
+
+    if product_api_scan_configuration.product.pk != int(pid):  # user is trying to edit Tool Configuration from another product (trying to by-pass auth)
+        raise Http404()
+
+    if request.method == 'POST':
+        form = Product_API_Scan_ConfigurationForm(request.POST, instance=product_api_scan_configuration)
+        if form.is_valid():
+            try:
+                form_copy = form.save(commit=False)
+                api = create_API(form_copy.tool_configuration)
+                if api and hasattr(api, 'test_product_connection'):
+                    result = api.test_product_connection(form_copy)
+                    messages.add_message(request,
+                                         messages.SUCCESS,
+                                         f'API connection successful with message: {result}.',
+                                         extra_tags='alert-success')
+                form.save()
+
+                messages.add_message(request,
+                                     messages.SUCCESS,
+                                     'API Scan Configuration successfully updated.',
+                                     extra_tags='alert-success')
+                return HttpResponseRedirect(reverse('view_api_scan_configurations', args=(pid,)))
+            except Exception as e:
+                logger.info(e)
+                messages.add_message(request,
+                                     messages.ERROR,
+                                     str(e),
+                                     extra_tags='alert-danger')
+    else:
+        form = Product_API_Scan_ConfigurationForm(instance=product_api_scan_configuration)
+
+    product_tab = Product_Tab(pid, title="Edit API Scan Configuration", tab="settings")
+    return render(request,
+                  'dojo/edit_product_api_scan_configuration.html',
+                  {
+                      'form': form,
+                      'product_tab': product_tab
+                  })
+
+
+@user_is_authorized(Product_API_Scan_Configuration, Permissions.Product_API_Scan_Configuration_Delete, 'pascid')
+def delete_api_scan_configuration(request, pid, pascid):
+
+    product_api_scan_configuration = get_object_or_404(Product_API_Scan_Configuration, id=pascid)
+
+    if product_api_scan_configuration.product.pk != int(pid):  # user is trying to delete Tool Configuration from another product (trying to by-pass auth)
+        raise Http404()
+
+    if request.method == 'POST':
+        form = Product_API_Scan_ConfigurationForm(request.POST)
+        product_api_scan_configuration.delete()
+        messages.add_message(request,
+                             messages.SUCCESS,
+                             'API Scan Configuration deleted.',
+                             extra_tags='alert-success')
+        return HttpResponseRedirect(reverse('view_api_scan_configurations', args=(pid,)))
+    else:
+        form = DeleteProduct_API_Scan_ConfigurationForm(instance=product_api_scan_configuration)
+
+    product_tab = Product_Tab(pid, title="Delete Tool Configuration", tab="settings")
+    return render(request,
+                  'dojo/delete_product_api_scan_configuration.html',
+                  {
+                      'form': form,
+                      'product_tab': product_tab
+                  })
 
 
 @user_is_authorized(Product_Group, Permissions.Product_Group_Edit, 'groupid')

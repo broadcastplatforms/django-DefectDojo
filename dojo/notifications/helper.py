@@ -9,7 +9,7 @@ from django.urls import reverse
 from dojo.celery import app
 from dojo.user.queries import get_authorized_users_for_product_and_product_type, get_authorized_users_for_product_type
 from dojo.authorization.roles_permissions import Permissions
-# from dojo.decorators import dojo_async_task, we_want_async, convert_kwargs_if_async
+from dojo.decorators import dojo_async_task, we_want_async
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +46,6 @@ def create_notification(event=None, **kwargs):
             from dojo.utils import get_product
             product = get_product(kwargs['obj'])
 
-        # notifications are made synchronous again due to serialization bug in django-tagulous
-        # see https://github.com/DefectDojo/django-DefectDojo/issues/3677
-        # kwargs = convert_kwargs_if_async(**kwargs)
-
         # System notifications
         try:
             system_notifications = Notifications.objects.get(user=None)
@@ -74,7 +70,7 @@ def create_notification(event=None, **kwargs):
                 queryset=Notifications.objects.filter(Q(product_id=product) | Q(product__isnull=True)),
                 to_attr="applicable_notifications"
             )).annotate(applicable_notifications_count=Count('notifications__id', filter=Q(notifications__product_id=product) | Q(notifications__product__isnull=True)))\
-                .filter((Q(applicable_notifications_count__gt=0) | Q(is_superuser=True) | Q(is_staff=True)))
+                .filter((Q(applicable_notifications_count__gt=0) | Q(is_superuser=True)))
 
             # only send to authorized users or admin/superusers
             if product:
@@ -86,7 +82,7 @@ def create_notification(event=None, **kwargs):
                 # send notifications to user after merging possible multiple notifications records (i.e. personal global + personal product)
                 # kwargs.update({'user': user})
                 applicable_notifications = user.applicable_notifications
-                if user.is_staff or user.is_superuser:
+                if user.is_superuser:
                     # admin users get all system notifications
                     applicable_notifications.append(system_notifications)
 
@@ -102,7 +98,7 @@ def create_description(event, *args, **kwargs):
         elif event == 'product_type_added':
             kwargs["description"] = "Product Type " + kwargs['title'] + " has been created successfully."
         else:
-            kwargs["description"] = "Event " + str(event) + " has occured."
+            kwargs["description"] = "Event " + str(event) + " has occurred."
 
     return kwargs["description"]
 
@@ -118,7 +114,7 @@ def create_notification_message(event, user, notification_type, *args, **kwargs)
     except TemplateDoesNotExist:
         logger.debug('template not found or not implemented yet: %s', template)
     except Exception as e:
-        logger.error("error during rendeing of template %s exception is %s", template, e)
+        logger.error("error during rendering of template %s exception is %s", template, e)
     finally:
         if not notification_message:
             kwargs["description"] = create_description(event, *args, **kwargs)
@@ -131,11 +127,10 @@ def process_notifications(event, notifications=None, **kwargs):
     from dojo.utils import get_system_setting
 
     if not notifications:
-        logger.warn('no notifications!')
+        logger.warning('no notifications!')
         return
 
-    # logger.debug('sync: %s %s', sync, vars(notifications))
-    # logger.debug('sending notification ' + ('asynchronously' if we_want_async() else 'synchronously'))
+    logger.debug('sending notification ' + ('asynchronously' if we_want_async() else 'synchronously'))
     logger.debug('process notifications for %s', notifications.user)
     logger.debug('notifications: %s', vars(notifications))
 
@@ -160,9 +155,7 @@ def process_notifications(event, notifications=None, **kwargs):
         send_alert_notification(event, notifications.user, **kwargs)
 
 
-# notifications are made synchronous again due to serialization bug in django-tagulous
-# see https://github.com/DefectDojo/django-DefectDojo/issues/3677
-# @dojo_async_task
+@dojo_async_task
 @app.task
 def send_slack_notification(event, user=None, *args, **kwargs):
     from dojo.utils import get_system_setting
@@ -220,9 +213,7 @@ def send_slack_notification(event, user=None, *args, **kwargs):
         log_alert(e, 'Slack Notification', title=kwargs['title'], description=str(e), url=kwargs.get('url', None))
 
 
-# notifications are made synchronous again due to serialization bug in django-tagulous
-# see https://github.com/DefectDojo/django-DefectDojo/issues/3677
-# @dojo_async_task
+@dojo_async_task
 @app.task
 def send_msteams_notification(event, user=None, *args, **kwargs):
     from dojo.utils import get_system_setting
@@ -249,9 +240,7 @@ def send_msteams_notification(event, user=None, *args, **kwargs):
         pass
 
 
-# notifications are made synchronous again due to serialization bug in django-tagulous
-# see https://github.com/DefectDojo/django-DefectDojo/issues/3677
-# @dojo_async_task
+@dojo_async_task
 @app.task
 def send_mail_notification(event, user=None, *args, **kwargs):
     from dojo.utils import get_system_setting
@@ -271,9 +260,9 @@ def send_mail_notification(event, user=None, *args, **kwargs):
         email = EmailMessage(
             subject,
             create_notification_message(event, user, 'mail', *args, **kwargs),
-            get_system_setting('mail_notifications_from'),
+            get_system_setting('email_from'),
             [address],
-            headers={"From": "{}".format(get_system_setting('mail_notifications_from'))}
+            headers={"From": "{}".format(get_system_setting('email_from'))}
         )
         email.content_subtype = 'html'
         logger.debug('sending email alert')
@@ -316,8 +305,8 @@ def get_slack_user_id(user_email):
 
     res = requests.request(
         method='POST',
-        url='https://slack.com/api/users.list',
-        data={'token': get_system_setting('slack_token')})
+        url='https://slack.com/api/users.lookupByEmail',
+        data={'token': get_system_setting('slack_token'), 'email': user_email})
 
     users = json.loads(res.text)
 
@@ -337,10 +326,10 @@ def get_slack_user_id(user_email):
                             slack_user_is_found = True
                             break
                     else:
-                        logger.warn("A user with email {} could not be found in this Slack workspace.".format(user_email))
+                        logger.warning("A user with email {} could not be found in this Slack workspace.".format(user_email))
 
             if not slack_user_is_found:
-                logger.warn("The Slack user was not found.")
+                logger.warning("The Slack user was not found.")
 
     return user_id
 
@@ -348,7 +337,7 @@ def get_slack_user_id(user_email):
 def log_alert(e, notification_type=None, *args, **kwargs):
     # no try catch here, if this fails we need to show an error
 
-    users = Dojo_User.objects.filter((Q(is_superuser=True) | Q(is_staff=True)))
+    users = Dojo_User.objects.filter(is_superuser=True)
     for user in users:
         alert = Alerts(
             user_id=user,
