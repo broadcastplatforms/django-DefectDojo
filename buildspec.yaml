@@ -13,8 +13,8 @@ phases:
       - echo Building the Docker images...
       - DJANGO_REPO_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME-django
       - NGINX_REPO_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_REPO_NAME-nginx
-      - docker build --tag $DJANGO_REPO_URI:latest --tag $DJANGO_REPO_URI:$IMAGE_TAG -f Dockerfile.django .
-      - docker build --tag $NGINX_REPO_URI:latest --tag $NGINX_REPO_URI:$IMAGE_TAG -f Dockerfile.nginx .
+      - docker build --tag $DJANGO_REPO_URI:latest --tag $DJANGO_REPO_URI:$IMAGE_TAG -f Dockerfile.django-debian .
+      - docker build --tag $NGINX_REPO_URI:latest --tag $NGINX_REPO_URI:$IMAGE_TAG -f Dockerfile.nginx-debian .
   post_build:
     commands:
       - echo Build completed on `date`
