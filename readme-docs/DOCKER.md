@@ -2,7 +2,7 @@
 
 The docker-compose.yml file in this repository is fully functional to evaluate DefectDojo in your local environment.
 
-Although Docker Compose is one of the supported installation methods to deploy a containerized DefectDojo in a production environment, the docker-compose.yml file is not intended for production use without first customizing it to your particular situation. [Running in Production](https://defectdojo.github.io/django-DefectDojo/getting_started/running-in-production/) gives advice on which adjustments are useful for performance and operational reliability.
+Although Docker Compose is one of the supported installation methods to deploy a containerized DefectDojo in a production environment, the docker-compose.yml file is not intended for production use without first customizing it to your particular situation. [Running in Production](https://documentation.defectdojo.com/getting_started/running-in-production/) gives advice on which adjustments are useful for performance and operational reliability.
 
 
 # Prerequisites
@@ -39,7 +39,16 @@ The Docker Compose setup supports 2 different databases (MySQL and PostgreSQL) a
 - mysql-rabbitmq
 - mysql-redis
 - postgres-rabbitmq
-- postgres-redis
+- postgres-redis*
+
+e.g. 
+```zsh
+./dc-up.sh mysql-redis
+```
+
+A default profile can be set with the environment variable `DD_PROFILE`. If this environment variable is set when starting the containers, the parameter for the profile needs not to be given for the start scripts.
+
+When DD_PROFILE or command-line profile is not specified, the command will run "postgres-redis" as the default profile. 
 
 The environment variables needed for the different profiles are prepared in files, which need to be included additionally with the parameter `--env-file` with a choices that fits to the profile:
 
@@ -50,16 +59,15 @@ The environment variables needed for the different profiles are prepared in file
 
 ## Scripts
 
-5 shell scripts make life easier and avoid typing long commands:
+6 shell scripts make life easier and avoid typing long commands:
 
-- `./dc-build.sh` - Build the docker images, it can take one additional parameter to be used in the build process.
-- `./dc-up.sh` - Start the docker containers in the foreground, it needs one of the profile names as a parameter
-- `./dc-up-d.sh` - Start the docker containers in the background, it needs one of the profile names as a parameter
+- `./dc-build.sh` - Build the docker images, it can take one additional parameter to be used in the build process, e.g. `./dc-build.sh --no-cache`.
+- `./dc-up.sh` - Start the docker containers in the foreground, it needs one of the profile names as a parameter, e.g. `./dc-up.sh postgres-redis`.
+- `./dc-up-d.sh` - Start the docker containers in the background, it needs one of the profile names as a parameter, e.g. `./dc-up-d.sh mysql-rabbitmq`
 - `./dc-stop.sh` - Stop the docker containers, it can take one additional parameter to be used in the stop process.
 - `./dc-down.sh` - Stop and remove the docker containers, it can take one additional parameter to be used in the stop and remove process.
-- `./dc-unittest.sh` - Utility script to aid in running a specific unit test class.  Requires a profile and test case as args.
+- `./dc-unittest.sh` - Utility script to aid in running a specific unit test class.  Requires a profile and test case as parameters.
 
-A default profile can be set with the environment variable `DD_PROFILE`. If this environment variable is set when starting the containers, the parameter for the profile needs not to be given for the start scripts .
 
 # Setup via Docker Compose - Building and running the application
 
@@ -89,7 +97,7 @@ To run the application based on previously built image (or based on dockerhub im
 
 ```zsh
 docker/setEnv.sh release
-./dc-up.sh
+./dc-up.sh postgres-redis # or an other profile
 ```
 
 This will run the application based on docker-compose.yml only.
@@ -104,7 +112,7 @@ For development, use:
 ```zsh
 docker/setEnv.sh dev
 ./dc-build.sh
-./dc-up.sh
+./dc-up.sh postgres-redis # or an other profile
 ```
 
 This will run the application based on merged configurations from docker-compose.yml and docker-compose.override.dev.yml.
@@ -200,10 +208,10 @@ Make sure you write down the first password generated as you'll need it when re-
 ## Option to change the password
 * If you dont have admin password use the below command to change the password.
 * After starting the container and open another tab in the same folder.
-* django-defectdojo_uwsgi_1 -- name obtained from running containers using ```zsh docker ps ``` command
+* django-defectdojo-uwsgi-1 -- name obtained from running containers using ```zsh docker ps ``` command
 
 ```zsh
-docker exec -it django-defectdojo_uwsgi_1 ./manage.py changepassword admin
+docker exec -it django-defectdojo-uwsgi-1 ./manage.py changepassword admin
 ```
 
 # Logging
@@ -281,13 +289,13 @@ To secure the application by https, follow those steps
 *  Generate a CSR (Certificate Signing Request)
 *  Have the CSR signed by a certificate authority
 *  Place the private key and the certificate under the nginx folder
-*  copy your secrets into:
+*  copy your secrets into ../nginx/nginx_TLS.conf:
 ```
         server_name                 your.servername.com;
         ssl_certificate             /etc/nginx/ssl/nginx.crt
         ssl_certificate_key        /etc/nginx/ssl/nginx.key;
 ```
-*set the GENERATE_TLS_CERTIFICATE != True in the docker-compose.override.https.yml
+*set the GENERATE_TLS_CERTIFICATE != True in the docker-compose.override.https.yml 
 * Protect your private key from other users:
 ```
 chmod 400 nginx/*.key
@@ -301,7 +309,7 @@ ln -s docker-compose.override.https.yml docker-compose.override.yml
 ```
 
 ## Create credentials on the fly
-* you can generate a Certificate on the fly (without valid domainname etc.)
+* You can generate a Certificate on the fly (without valid domainname etc.)
 
 * Run defectDojo with:
 ```
@@ -314,7 +322,7 @@ The default https port is 8443.
 
 To change the port:
 - update `nginx.conf`
-- update `docker-compose.override.https.yml` or set DD_PORT in the environment)
+- update `docker-compose.override.https.yml` or set DD_TLS_PORT in the environment)
 - restart the application
 
 NB: some third party software may require to change the exposed port in Dockerfile.nginx as they use docker-compose declarations to discover which ports to map when publishing the application.
@@ -410,7 +418,7 @@ OpenSSL version: OpenSSL 1.0.1t  3 May 2016
 
 In this case, both docker (version 17.09.0-ce) and docker-compose (1.18.0) need to be updated.
 
-Follow [Dockers' documentation](https://docs.docker.com/install/) for your OS to get the latest version of Docker. For the docker command, most OSes have a built-in update mechanism like "apt upgrade".
+Follow [Docker's documentation](https://docs.docker.com/install/) for your OS to get the latest version of Docker. For the docker command, most OSes have a built-in update mechanism like "apt upgrade".
 
 Docker Compose isn't packaged like Docker and you'll need to manually update an existing install if using Linux. For Linux, either follow the instructions in the [Docker Compose documentation](https://docs.docker.com/compose/install/) or use the shell script below. The script below will update docker-compose to the latest version automatically. You will need to make the script executable and have sudo privileges to upgrade docker-compose:
 
