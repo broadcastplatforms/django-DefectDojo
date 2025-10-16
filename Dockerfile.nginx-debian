@@ -16,6 +16,10 @@ RUN \
     dnsutils \
     libpq-dev \
     postgresql-client \
+    pkg-config \
+    gcc \
+    python3-dev \
+    default-libmysqlclient-dev \
     xmlsec1 \
     git \
     uuid-runtime \
@@ -50,7 +54,13 @@ RUN \
   wget https://github.com/yarnpkg/yarn/releases/download/v1.22.10/yarn_1.22.10_all.deb && \
   dpkg -i yarn_1.22.10_all.deb && \
   echo "$(yarn --version)" && \
-  apt-get -y install --no-install-recommends nodejs && \
+  apt-get -y install --no-install-recommends \
+    nodejs \
+    pkg-config \
+    gcc \
+    python3-dev \
+    default-libmysqlclient-dev \
+    build-essential \ && \
   echo "$(node --version)" && \
   apt-get clean && \
   rm yarn_1.22.10_all.deb && \
