@@ -1,12 +1,64 @@
-import json
 import hashlib
+import json
+
 from dojo.models import Finding
 
 
-class CargoAuditParser(object):
-    """
-    A class that can be used to parse the cargo audit JSON report file
-    """
+class CargoAuditParser:
+
+    """A class that can be used to parse the cargo audit JSON report file"""
+
+    def get_fields(self) -> list[str]:
+        """
+        Return the list of fields used in the Cargo Audit Parser.
+
+        Fields:
+        - title: Set to the title from Cargo Audit Scanner
+        - severity: Set to "High" regardless of context.
+        - tags: Set to the tags from Cargo Audit Scanner if they are provided.
+        - description: Set to the description from Cargo Audit Scanner and joined with URL provided.
+        - component_name: Set to name of package provided by the Cargo Audit Scanner.
+        - component_version: Set to version of package provided by the Cargo Audit Scanner.
+        - vuln_id_from_tool: Set to id provided by the Cargo Audit Scanner.
+        - publish_date: Set to date provided by the Cargo Audit Scanner.
+        - nb_occurences: Set to 1 by the parser.
+        - mitigation: Set to package_name and versions if information is available.
+
+        NOTE: This parser supports tags
+        """
+        return [
+            "title",
+            "severity",
+            "tags",
+            "description",
+            "component_name",
+            "component_version",
+            "vuln_id_from_tool",
+            "publish_date",
+            "nb_occurences",
+            "mitigation",
+        ]
+
+    def get_dedupe_fields(self) -> list[str]:
+        """
+        Return the list of fields used for deduplication in the Cargo Audit Parser.
+
+        Fields:
+        - vulnerability_ids:
+        - severity: Set to "High" regardless of context.
+        - component_name: Set to name of package provided by the Cargo Audit Scanner.
+        - component_version: Set to version of package provided by the Cargo Audit Scanner.
+        - vuln_id_from_tool: Set to id provided by the Cargo Audit Scanner.
+
+        NOTE: Dedupe fields in settings.dist.py list vulnerability_ids and vuln_id_from_tool
+        """
+        return [
+            "vulnerability_ids",
+            "severity",
+            "component_name",
+            "component_version",
+            "vuln_id_from_tool",
+        ]
 
     def get_scan_types(self):
         return ["CargoAudit Scan"]
@@ -25,12 +77,7 @@ class CargoAuditParser(object):
                 advisory = item.get("advisory")
                 vuln_id = advisory.get("id")
                 vulnerability_ids = [advisory.get("id")]
-                if "categories" in advisory:
-                    categories = (
-                        f"**Categories:** {', '.join(advisory['categories'])}"
-                    )
-                else:
-                    categories = ""
+                categories = f"**Categories:** {', '.join(advisory['categories'])}" if "categories" in advisory else ""
                 description = (
                     categories
                     + f"\n**Description:** `{advisory.get('description')}`"
@@ -51,7 +98,7 @@ class CargoAuditParser(object):
                     )
 
                 references = f"{advisory.get('url')}\n" + "\n".join(
-                    advisory["references"]
+                    advisory["references"],
                 )
                 date = advisory.get("date")
 
@@ -62,18 +109,15 @@ class CargoAuditParser(object):
                 package_version = item.get("package").get("version")
                 title = f"[{package_name} {package_version}] {advisory.get('title')}"
                 severity = "High"
-                if "keywords" in advisory:
-                    tags = advisory.get("keywords")
-                else:
-                    tags = []
+                tags = advisory.get("keywords") if "keywords" in advisory else []
                 try:
                     mitigation = f"**Update {package_name} to** {', '.join(item['versions']['patched'])}"
                 except KeyError:
                     mitigation = "No information about patched version"
                 dupe_key = hashlib.sha256(
                     (vuln_id + date + package_name + package_version).encode(
-                        "utf-8"
-                    )
+                        "utf-8",
+                    ),
                 ).hexdigest()
 
                 if dupe_key in dupes:

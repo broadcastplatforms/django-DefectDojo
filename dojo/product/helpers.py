@@ -1,9 +1,9 @@
 import contextlib
 import logging
-from dojo.celery import app
-from dojo.models import SLA_Configuration, Product, Engagement, Test, Finding, Endpoint
-from dojo.decorators import dojo_async_task
 
+from dojo.celery import app
+from dojo.decorators import dojo_async_task
+from dojo.models import Endpoint, Engagement, Finding, Product, SLA_Configuration, Test
 
 logger = logging.getLogger(__name__)
 
@@ -54,5 +54,5 @@ def propagate_tags_on_product_sync(product):
 def propagate_tags_on_object_list(object_list):
     for obj in object_list:
         if obj and obj.id is not None:
-            logger.debug(f"\tPropagating tags to {str(type(obj))} - {str(obj)}")
+            logger.debug(f"\tPropagating tags to {type(obj)} - {obj}")
             obj.save()

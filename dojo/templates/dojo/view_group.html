@@ -3,7 +3,7 @@
 {% load authorization_tags %}
 
 {% block content %}
-<h3 id="id_heading"> Group {{ group.name }}</h3>
+<h3 id="id_heading"> Group: {{ group.name }}</h3>
 <div class="row">
     <div id="tests" class="col-md-8">
         <div class="panel panel-default">
@@ -43,9 +43,9 @@
         <div class="panel panel-default">
             <div class="panel-heading">
                 <div class="clearfix">
-                    <h4 class="pull-left">Members</h4>
+                    <h4 class="pull-left">Members of this Group</h4>
                     &nbsp;
-                    <a href="https://documentation.defectdojo.com/usage/permissions/#groups" target="_blank">
+                    <a href="https://docs.defectdojo.com/en/customize_dojo/user_management/create_user_group/#manage-a-groups-users" target="_blank">
                         <i class="fa-solid fa-circle-question"></i></a>
                     {% if group|has_object_permission:"Group_Manage_Members" %}
                     <div class="dropdown pull-right">
@@ -72,7 +72,7 @@
                     <tr>
                         <th label="Actions"></th>
                         <th>User</th>
-                        <th>Group role</th>
+                        <th>Role in this Group</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -108,7 +108,7 @@
             </div>
             {% else %}
             <div class="panel-body">
-                <small class="text-muted"><em>No members found.</em></small>
+                <small class="text-muted"><em>This Group has no members.</em></small>
             </div>
             {% endif %}
         </div>
@@ -116,9 +116,9 @@
         <div class="panel panel-default">
             <div class="panel-heading">
                 <div class="clearfix">
-                    <h4 class="pull-left">Product Type Groups</h4>
+                    <h4 class="pull-left">Product Types this Group can access</h4>
                     &nbsp;
-                    <a href="https://documentation.defectdojo.com/usage/permissions/" target="_blank">
+                    <a href="https://docs.defectdojo.com/en/customize_dojo/user_management/create_user_group/#add-product-roles-or-product-type-roles-for-a-group" target="_blank">
                         <i class="fa-solid fa-circle-question"></i></a>
                     {% if request.user.is_superuser %}
                     <div class="dropdown pull-right">
@@ -182,7 +182,7 @@
             </div>
             {% else %}
             <div class="panel-body">
-                <small class="text-muted"><em>No product type groups found.</em></small>
+                <small class="text-muted"><em>This Group cannot access any Product Types.</em></small>
             </div>
             {% endif %}
         </div>
@@ -190,9 +190,9 @@
         <div class="panel panel-default">
             <div class="panel-heading">
                 <div class="clearfix">
-                    <h4 class="pull-left">Product Groups</h4>
+                    <h4 class="pull-left">Products this Group can access</h4>
                     &nbsp;
-                    <a href="https://documentation.defectdojo.com/usage/permissions/" target="_blank">
+                    <a href="https://docs.defectdojo.com/en/customize_dojo/user_management/create_user_group/#add-product-roles-or-product-type-roles-for-a-group" target="_blank">
                         <i class="fa-solid fa-circle-question"></i></a>
                     {% if request.user.is_superuser %}
                     <div class="dropdown pull-right">
@@ -256,7 +256,7 @@
             </div>
             {% else %}
             <div class="panel-body">
-                <small class="text-muted"><em>No product groups found.</em></small>
+                <small class="text-muted"><em>This Group cannot access any Products.</em></small>
             </div>
             {% endif %}
         </div>

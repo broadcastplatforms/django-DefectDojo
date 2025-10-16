@@ -3,7 +3,7 @@ import json
 from dojo.models import Finding
 
 
-class GitlabDepScanParser(object):
+class GitlabDepScanParser:
     def get_scan_types(self):
         return ["GitLab Dependency Scanning Report"]
 
@@ -15,11 +15,12 @@ class GitlabDepScanParser(object):
 
     def get_findings(self, json_output, test):
         if json_output is None:
-            return
+            return None
 
         tree = self.parse_json(json_output)
         if tree:
             return self.get_items(tree, test)
+        return None
 
     def parse_json(self, json_output):
         try:
@@ -29,7 +30,8 @@ class GitlabDepScanParser(object):
             except Exception:
                 tree = json.loads(data)
         except Exception:
-            raise ValueError("Invalid format")
+            msg = "Invalid format"
+            raise ValueError(msg)
 
         return tree
 
@@ -44,12 +46,9 @@ class GitlabDepScanParser(object):
         return list(items.values())
 
     def get_item(self, vuln, test, scan):
-        if "id" in vuln:
-            unique_id_from_tool = vuln["id"]
-        else:
-            # If the new unique id is not provided, fall back to deprecated
-            # "cve" fingerprint (old version)
-            unique_id_from_tool = vuln["cve"]
+        # If the new unique id is not provided, fall back to deprecated
+        # "cve" fingerprint (old version)
+        unique_id_from_tool = vuln["id"] if "id" in vuln else vuln["cve"]
 
         title = ""
         if "name" in vuln:
@@ -72,25 +71,21 @@ class GitlabDepScanParser(object):
             description += f"{vuln['description']}\n"
 
         location = vuln["location"]
-        file_path = location["file"] if "file" in location else None
+        file_path = location.get("file", None)
 
         component_name = None
         component_version = None
         if "dependency" in location:
             component_version = (
-                location["dependency"]["version"]
-                if "version" in location["dependency"]
-                else None
+                location["dependency"].get("version", None)
             )
             if "package" in location["dependency"]:
                 component_name = (
-                    location["dependency"]["package"]["name"]
-                    if "name" in location["dependency"]["package"]
-                    else None
+                    location["dependency"]["package"].get("name", None)
                 )
 
         severity = vuln["severity"]
-        if severity in ["Undefined", "Unknown"]:
+        if severity in {"Undefined", "Unknown"}:
             # Severity can be "Undefined" or "Unknown" in report
             # In that case we set it as Info and specify the initial severity
             # in the title

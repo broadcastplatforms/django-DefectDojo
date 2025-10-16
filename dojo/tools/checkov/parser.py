@@ -3,7 +3,7 @@ import json
 from dojo.models import Finding
 
 
-class CheckovParser(object):
+class CheckovParser:
     def get_scan_types(self):
         return ["Checkov Scan"]
 
@@ -24,7 +24,8 @@ class CheckovParser(object):
         return findings
 
     def parse_json(self, json_output):
-        """Parse JSON report.
+        """
+        Parse JSON report.
         Checkov may return only one `check_type` (where the report is just a JSON)
         or more (where the report is an array of JSONs).
         To address all scenarios we force this method to return a list of JSON objects.
@@ -41,7 +42,8 @@ class CheckovParser(object):
             except BaseException:
                 deserialized = json.loads(data)
         except BaseException:
-            raise ValueError("Invalid format")
+            msg = "Invalid format"
+            raise ValueError(msg)
 
         return (
             [deserialized] if not isinstance(
@@ -62,7 +64,7 @@ class CheckovParser(object):
 
 def get_item(vuln, test, check_type):
     title = (
-        vuln["check_name"] if "check_name" in vuln else "check_name not found"
+        vuln.get("check_name", "check_name not found")
     )
     description = f"Check Type: {check_type}\n"
     if "check_id" in vuln:
@@ -70,7 +72,7 @@ def get_item(vuln, test, check_type):
     if "check_name" in vuln:
         description += f"{vuln['check_name']}\n"
 
-    file_path = vuln["file_path"] if "file_path" in vuln else None
+    file_path = vuln.get("file_path", None)
     source_line = None
     if "file_line_range" in vuln:
         lines = vuln["file_line_range"]
@@ -86,7 +88,7 @@ def get_item(vuln, test, check_type):
 
     mitigation = ""
 
-    references = vuln["guideline"] if "guideline" in vuln else ""
+    references = vuln.get("guideline", "")
     return Finding(
         title=title,
         test=test,

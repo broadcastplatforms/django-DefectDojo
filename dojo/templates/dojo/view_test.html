@@ -35,7 +35,9 @@
                             type="button"
                             id="dropdownMenu1"
                             data-toggle="dropdown"
-                            aria-expanded="true">
+                            aria-expanded="true"
+                            aria-label="Test options"        
+                            >
                         <span class="fa-solid fa-bars"></span>
                         <span class="caret"></span>
                     </button>
@@ -100,6 +102,7 @@
         <div class="table-responsive">
             <table class="table-striped table table-condensed table-hover centered">
                 <tr>
+                    {% block test_header %}
                     <th>{% trans "Engagement" %}</th>
                     <th>{% trans "Environment" %}</th>
                     <th>{% trans "Dates" %}</th>
@@ -120,8 +123,10 @@
                         </th>
                     {% endif %}
                     {% if test.api_scan_configuration %}<th>{% trans "API Scan Configuration" %}</th>{% endif %}
+                    {% endblock test_header %}
                 </tr>
                 <tr>
+                    {% block test_body %}
                     <td>
                         <a href="{% url 'view_engagement' test.engagement.id %}">{{ test.engagement.name }}</a>
                     </td>
@@ -155,7 +160,7 @@
                     {% endif %}
                     <td>{{ test.version }}</td>
                     {% if 'TRACK_IMPORT_HISTORY'|setting_enabled and test.total_reimport_count %}
-                        <td>{{ test.total_reimport_count }}</td>
+                        <td class="text-right">{{ test.total_reimport_count }}</td>
                     {% endif %}
                     {% if test.api_scan_configuration %}
                         <td>
@@ -168,6 +173,7 @@
                             {% endif %}
                         </td>
                     {% endif %}
+                    {% endblock test_body %}
                 </tr>
             </table>
         </div>
@@ -204,6 +210,7 @@
                         </i>
                         <div class="dropdown pull-right">
                             <button id="show-filters"
+                                    aria-label="Filters"
                                     data-toggle="collapse"
                                     data-target="#import-history-filters"
                                     class="btn btn-primary toggle-filters">
@@ -270,6 +277,8 @@
                                             {% for action in finding_action_list %}
                                                 {{ action.list|length }} {{ action.grouper }}
                                                 {% if not forloop.last %},{% endif %}
+                                            {% empty %}
+                                                There were no findings created, closed, or modified
                                             {% endfor %}
                                         </a>
                                     </td>
@@ -514,6 +523,7 @@
                     <div id="test-pulldown" class="dropdown pull-right">
                         &nbsp;
                         <button id="show-filters"
+                                aria-label="Filters"
                                 data-toggle="collapse"
                                 data-target="#the-filters"
                                 class="btn btn-primary toggle-filters">
@@ -524,7 +534,8 @@
                                     type="button"
                                     id="dropdownMenu_test_add"
                                     data-toggle="dropdown"
-                                    aria-expanded="true">
+                                    aria-expanded="true"
+                                    aria-label="Add finding">
                                 <span class="fa-solid fa-plus"></span>
                                 <span class="caret"></span>
                             </button>
@@ -550,7 +561,8 @@
                                 type="button"
                                 id="dropdownMenu1"
                                 data-toggle="dropdown"
-                                aria-expanded="true">
+                                aria-expanded="true"
+                                aria-label="Report options">
                             <span class="fa-solid fa-download"></span>
                             <span class="caret"></span>
                         </button>
@@ -844,6 +856,12 @@
                                 {{ bulk_edit_form.media.css }}
                                 {{ bulk_edit_form.media.js }}
                                 {{ bulk_edit_form.tags }}
+                                {% if bulk_edit_form.disclaimer %}
+                                    <div style="background-color:#DADCE2; border:1px #003333; padding:.3em; margin:.1em; ">
+                                        <div style="color:#ff0000;">Disclaimer</div>
+                                        <div>{{ bulk_edit_form.disclaimer }}</div>
+                                    </div>
+                                {% endif %}
                                 <input type="submit"
                                     class="btn btn-sm btn-secondary"
                                     value="Submit"
@@ -920,6 +938,12 @@
                                 </th>
                                 <th>
                                     {% trans "Vulnerability Id" %}
+                                </th>
+                                <th>
+                                    {% trans "EPSS Score" %}
+                                </th>
+                                <th>
+                                    {% trans "EPSS Percentile" %}
                                 </th>
                                 <th>
                                     {% trans "Date" %}
@@ -1070,8 +1094,7 @@
                                                                 {% endif %}
                                                                 {% if finding.test.engagement.product.enable_full_risk_acceptance %}
                                                                     <li role="presentation">
-                                                                        <a href
-                                                                        {% url 'add_risk_acceptance' finding.test.engagement.id finding.id %}>
+                                                                        <a href="{% url 'add_risk_acceptance' finding.test.engagement.id finding.id %}?return_url={{ request.get_full_path|urlencode }}">
                                                                             <i class="fa-solid fa-circle-exclamation"></i> {% trans "Add Risk Acceptance..." %}
                                                                         </a>
                                                                     </li>
@@ -1122,7 +1145,10 @@
                                         {% if finding.file_path %}
                                             <i class="fa-solid fa-folder has-popover dojo-sup"
                                             data-trigger="hover"
-                                            data-content="{{ finding.file_path }}"
+                                            data-html="true"
+                                            data-content="
+                                                {{ finding.file_path }}{% if finding.line %}:{{finding.line}}{% endif %}
+                                            "
                                             data-placement="right"
                                             data-container="body"
                                             data-original-title="Files"
@@ -1187,6 +1213,12 @@
                                         {% endwith %}
                                     </td>
                                     <td class="nowrap">
+                                        {{ finding.epss_score|format_epss }}
+                                    </td>
+                                    <td class="nowrap">
+                                        {{ finding.epss_percentile|format_epss }}
+                                    </td>
+                                    <td class="nowrap" data-order="{{ finding.date|date:"U" }}">
                                         {{ finding.date }}
                                     </td>
                                     <td>
@@ -1536,7 +1568,7 @@
                         <div class="col-md-2" style="text-align: center">
                             <div class="row">
                                 {% url 'access_file' fid=file.id oid=test.id obj_type='Test' as image_url %}
-                                <a href="{{ image_url }}" target="_blank">
+                                <a href="{{ image_url }}" target="_blank" download>
                                     {% if file|get_thumbnail %}
                                         <img src="{{ image_url }}" alt="thumbnail" style="width:150px">
                                     {% else %}
@@ -1566,6 +1598,12 @@
     <script type="text/javascript" src="{% static "jquery-highlight/jquery.highlight.js" %}"></script>
     <script type="application/javascript">
         {% block datatables_columns %}
+            var percentSort = function(data, type, row, meta) {
+                if(type === 'sort') {
+                    return (data && data.endsWith("%")) ? parseFloat(data.slice(0, -1)) : -1.00;
+                }
+                return data;
+            }
             var datatables_columns = [
                 {% if test|has_object_permission:"Test_Edit" or test|has_object_permission:"Test_Delete" %}
                     { "data": "checkbox" },
@@ -1577,7 +1615,16 @@
                 }},
                 { "data": "cwe" },
                 { "data": "cve" },
-                { "data": "date" },
+                { "data": "epss_score", "type": "num", "render": percentSort },
+                { "data": "epss_percentile", "type": "num", "render": percentSort },
+                { "data": "date", render: function (data, type, row, meta) {
+                    if(type === 'sort') {
+                        var api = new $.fn.dataTable.Api(meta.settings);
+                        var td = api.cell({row: meta.row, column: meta.col}).node();
+                        var data = $(td).attr("data-order");
+                    }
+                    return data;
+                }},
                 { "data": "age" },
                 {% if system_settings.enable_finding_sla %}
                     { "data": "sla" },
@@ -1647,54 +1694,60 @@
             };
 
             // Mapping of table columns to objects for proper cleanup and data formatting
-            var dojoTable = $('#test_findings').DataTable({
-                drawCallback: function(){
-                    $('#test_findings .has-popover').hover(
-                        function() { $(this).popover('show'); }, // hover
-                        function() { $(this).popover('hide'); } // unhover
-                    );
-                },
-                colReorder: true,
-                "columns": columns,
-                columnDefs: [
-                    {
-                        "orderable": false,
-                        "targets": [0]
+            {% if enable_table_filtering %}
+                var dojoTable = $('#test_findings').DataTable({
+                    drawCallback: function(){
+                        $('#test_findings .has-popover').hover(
+                            function() { $(this).popover('show'); }, // hover
+                            function() { $(this).popover('hide'); } // unhover
+                        );
                     },
-                    {
-                        targets: 'severity-sort',
-                        orderDataType: 'severity-asc'
-                    },
-                ],
-                dom: 'Bfrtip',
-                paging: false,
-                info: false,
-                buttons: [
-                    {
-                        extend: 'colvis',
-                        columns: ':not(.noVis)'
-                    },
-                    $.extend( true, {}, buttonCommon, {
-                        extend: 'copy'
-                    }),
-                    $.extend( true, {}, buttonCommon, {
-                        extend: 'excel',
-                        autoFilter: true,
-                        sheetName: 'Exported data',
-                    }),
-                    $.extend( true, {}, buttonCommon, {
-                        extend: 'csv'
-                    }),
-                    $.extend( true, {}, buttonCommon, {
-                        extend: 'pdf',
-                        orientation: 'landscape',
-                        pageSize: 'LETTER'
-                    }),
-                    $.extend( true, {}, buttonCommon, {
-                        extend: 'print'
-                    }),
-                ],
-            });
+                    colReorder: true,
+                    "columns": columns,
+                    columnDefs: [
+                        {
+                            "orderable": false,
+                            "targets": [0]
+                        },
+                        {
+                            targets: [0, 1],
+                            className: 'noVis'
+                        },
+                        {
+                            targets: 'severity-sort',
+                            orderDataType: 'severity-asc'
+                        },
+                    ],
+                    dom: 'Bfrtip',
+                    paging: false,
+                    info: false,
+                    buttons: [
+                        {
+                            extend: 'colvis',
+                            columns: ':not(.noVis)'
+                        },
+                        $.extend( true, {}, buttonCommon, {
+                            extend: 'copy'
+                        }),
+                        $.extend( true, {}, buttonCommon, {
+                            extend: 'excel',
+                            autoFilter: true,
+                            sheetName: 'Exported data',
+                        }),
+                        $.extend( true, {}, buttonCommon, {
+                            extend: 'csv'
+                        }),
+                        $.extend( true, {}, buttonCommon, {
+                            extend: 'pdf',
+                            orientation: 'landscape',
+                            pageSize: 'LETTER'
+                        }),
+                        $.extend( true, {}, buttonCommon, {
+                            extend: 'print'
+                        }),
+                    ],
+                });
+            {% endif %}
         });
 
         $(function () {

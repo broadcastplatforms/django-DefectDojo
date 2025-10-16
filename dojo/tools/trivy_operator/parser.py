@@ -1,30 +1,12 @@
-"""
-Parser for Aquasecurity trivy-operator (https://github.com/aquasecurity/trivy-operator)
-"""
+"""Parser for Aquasecurity trivy-operator (https://github.com/aquasecurity/trivy-operator)"""
 
 import json
-import logging
 
-from dojo.models import Finding
-
-logger = logging.getLogger(__name__)
-
-TRIVY_SEVERITIES = {
-    "CRITICAL": "Critical",
-    "HIGH": "High",
-    "MEDIUM": "Medium",
-    "LOW": "Low",
-    "UNKNOWN": "Info",
-}
-
-DESCRIPTION_TEMPLATE = """{title}
-**Fixed version:** {fixed_version}
-"""
-
-SECRET_DESCRIPTION_TEMPLATE = """{title}
-**Category:** {category}
-**Match:** {match}
-"""
+from dojo.tools.trivy_operator.checks_handler import TrivyChecksHandler
+from dojo.tools.trivy_operator.clustercompliance_handler import TrivyClusterComplianceHandler
+from dojo.tools.trivy_operator.compliance_handler import TrivyComplianceHandler
+from dojo.tools.trivy_operator.secrets_handler import TrivySecretsHandler
+from dojo.tools.trivy_operator.vulnerability_handler import TrivyVulnerabilityHandler
 
 
 class TrivyOperatorParser:
@@ -39,131 +21,51 @@ class TrivyOperatorParser:
 
     def get_findings(self, scan_file, test):
         scan_data = scan_file.read()
-
         try:
             data = json.loads(str(scan_data, "utf-8"))
         except Exception:
             data = json.loads(scan_data)
+        findings = []
+        if type(data) is list:
+            for listitems in data:
+                findings += self.output_findings(listitems, test)
+        elif type(data) is dict and bool(set(data.keys()) & {"clustercompliancereports.aquasecurity.github.io", "clusterconfigauditreports.aquasecurity.github.io", "clusterinfraassessmentreports.aquasecurity.github.io", "clusterrbacassessmentreports.aquasecurity.github.io", "configauditreports.aquasecurity.github.io", "exposedsecretreports.aquasecurity.github.io", "infraassessmentreports.aquasecurity.github.io", "rbacassessmentreports.aquasecurity.github.io", "vulnerabilityreports.aquasecurity.github.io"}):
+            for datakey in list(data.keys()):
+                if datakey not in {"clustersbomreports.aquasecurity.github.io", "sbomreports.aquasecurity.github.io"}:
+                    for listitems in (data[datakey]):
+                        findings += self.output_findings(listitems, test)
+        else:
+            findings += self.output_findings(data, test)
+        return findings
 
+    def output_findings(self, data, test):
+        findings = []
         if data is None:
-            return list()
+            return []
         metadata = data.get("metadata", None)
         if metadata is None:
-            return list()
+            return []
         labels = metadata.get("labels", None)
         if labels is None:
-            return list()
-        resource_namespace = labels.get(
-            "trivy-operator.resource.namespace", ""
-        )
-        resource_kind = labels.get("trivy-operator.resource.kind", "")
-        resource_name = labels.get("trivy-operator.resource.name", "")
-        container_name = labels.get("trivy-operator.container.name", "")
-        service = "/".join([resource_namespace, resource_kind, resource_name])
-        if container_name != "":
-            service = "/".join([service, container_name])
-
+            return []
         report = data.get("report", None)
-        if report is None:
-            return list()
-
-        findings = list()
-        vulnerabilities = report.get("vulnerabilities", None)
-        if vulnerabilities is not None:
-            for vulnerability in vulnerabilities:
-                vuln_id = vulnerability.get("vulnerabilityID", "0")
-                severity = TRIVY_SEVERITIES[vulnerability.get("severity")]
-                references = vulnerability.get("primaryLink")
-                mitigation = vulnerability.get("fixedVersion")
-                package_name = vulnerability.get("resource")
-                package_version = vulnerability.get("installedVersion")
-                cvssv3_score = vulnerability.get("score")
-                description = DESCRIPTION_TEMPLATE.format(
-                    title=vulnerability.get("title"), fixed_version=mitigation
-                )
-                title = " ".join(
-                    [
-                        vuln_id,
-                        package_name,
-                        package_version,
-                    ]
-                )
-                finding = Finding(
-                    test=test,
-                    title=title,
-                    severity=severity,
-                    references=references,
-                    mitigation=mitigation,
-                    component_name=package_name,
-                    component_version=package_version,
-                    cvssv3_score=cvssv3_score,
-                    description=description,
-                    static_finding=True,
-                    dynamic_finding=False,
-                    service=service,
-                )
-                if vuln_id:
-                    finding.unsaved_vulnerability_ids = [vuln_id]
-                findings.append(finding)
-
-        checks = report.get("checks", None)
-        if checks is not None:
-            for check in checks:
-                check_title = check.get("title")
-                check_severity = TRIVY_SEVERITIES[check.get("severity")]
-                check_id = check.get("checkID", "0")
-                check_references = ""
-                if check_id != 0:
-                    check_references = (
-                        "https://avd.aquasec.com/misconfig/kubernetes/"
-                        + check_id.lower()
-                    )
-                check_description = check.get("description", "")
-                title = f"{check_id} - {check_title}"
-                finding = Finding(
-                    test=test,
-                    title=title,
-                    severity=check_severity,
-                    references=check_references,
-                    description=check_description,
-                    static_finding=True,
-                    dynamic_finding=False,
-                    service=service,
-                )
-                if check_id:
-                    finding.unsaved_vulnerability_ids = [check_id]
-                findings.append(finding)
-
-        secrets = report.get("secrets", None)
-        if secrets is not None:
-            for secret in secrets:
-                secret_title = secret.get("title")
-                secret_category = secret.get("category")
-                secret_match = secret.get("match", "")
-                secret_severity = TRIVY_SEVERITIES[secret.get("severity")]
-                secret_rule_id = secret.get("ruleID", "0")
-                secret_target = secret.get("target", "")
-                secret_references = secret.get("ruleID", "")
-                title = f"Secret detected in {secret_target} - {secret_title}"
-                secret_description = SECRET_DESCRIPTION_TEMPLATE.format(
-                    title=secret_title,
-                    category=secret_category,
-                    match=secret_match,
-                )
-
-                finding = Finding(
-                    test=test,
-                    title=title,
-                    severity=secret_severity,
-                    references=secret_references,
-                    description=secret_description,
-                    file_path=secret_target,
-                    static_finding=True,
-                    dynamic_finding=False,
-                    service=service,
-                )
-                if secret_rule_id:
-                    finding.unsaved_vulnerability_ids = [secret_rule_id]
-                findings.append(finding)
-
+        if report is not None:
+            vulnerabilities = report.get("vulnerabilities", None)
+            if vulnerabilities is not None:
+                findings += TrivyVulnerabilityHandler().handle_vulns(labels, vulnerabilities, test)
+            checks = report.get("checks", None)
+            if checks is not None:
+                findings += TrivyChecksHandler().handle_checks(labels, checks, test)
+            secrets = report.get("secrets", None)
+            if secrets is not None:
+                findings += TrivySecretsHandler().handle_secrets(labels, secrets, test)
+        status = data.get("status", None)
+        if status is not None:
+            benchmarkreport = status.get("detailReport", None)
+            if benchmarkreport is not None:
+                findings += TrivyComplianceHandler().handle_compliance(benchmarkreport, test)
+            clustercompliance = status.get("summaryReport", None)
+            if clustercompliance is not None:
+                if int(status.get("summary").get("failCount", 0)) > 0:
+                    findings += TrivyClusterComplianceHandler().handle_clustercompliance(controls=data.get("spec").get("compliance").get("controls"), clustercompliance=clustercompliance, test=test)
         return findings

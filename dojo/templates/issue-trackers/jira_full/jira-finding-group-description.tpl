@@ -1,9 +1,9 @@
 {% load navigation_tags %}
 {% load display_tags %}
 {% url 'view_finding_group' finding_group.id as finding_group_url %}
-{% url 'view_product' finding.test.engagement.product.id as product_url %}
-{% url 'view_engagement' finding.test.engagement.id as engagement_url %}
-{% url 'view_test' finding.test.id as test_url %}
+{% url 'view_product' finding_group.test.engagement.product.id as product_url %}
+{% url 'view_engagement' finding_group.test.engagement.id as engagement_url %}
+{% url 'view_test' finding_group.test.id as test_url %}
 
 A group of Findings has been pushed to JIRA to be investigated and fixed:
 
@@ -12,7 +12,7 @@ h2. Group
 
 
 || Severity || CVE || CWE || Component || Version || Title || Status ||{% for finding in finding_group.findings.all %}
-| {{finding.severity}} | {% if finding.cve %}[{{finding.cve}}|{{finding.cve|vulnerability_url}}]{% else %}None{% endif %} | [{{finding.cwe}}|{{finding.cwe|cwe_url}}] | {{finding.component_name|jiraencode_component}} | {{finding.component_version}} | [{{ finding.title|jiraencode}}|{{ finding_url|full_url }}] | {{ finding.status }} |{% endfor %}
+| {{finding.severity}} | {% if finding.cve %}[{{finding.cve}}|{{finding.cve|vulnerability_url}}]{% else %}None{% endif %} | [{{finding.cwe}}|{{finding.cwe|cwe_url}}] | {{finding.component_name|jiraencode_component}} | {{finding.component_version}} | {% url 'view_finding' finding.id as finding_url %}[{{ finding.title|jiraencode}}|{{ finding_url|full_url }}] | {{ finding.status }} |{% endfor %}
 
 *Severity:* {{ finding_group.severity }}
 
@@ -66,26 +66,26 @@ h3. [{{ finding.title|jiraencode}}|{{ finding_url|full_url }}]
 {% endif %}
 
 *Description*:
-{{ finding.description }}
+{{ finding.description|safe }}
 
 {% if finding.mitigation %}
 *Mitigation*:
-{{ finding.mitigation }}
+{{ finding.mitigation|safe }}
 {% endif %}
 
 {% if finding.impact %}
 *Impact*:
-{{ finding.impact }}
+{{ finding.impact|safe }}
 {% endif %}
 
 {% if finding.steps_to_reproduce %}
 *Steps to reproduce*:
-{{ finding.steps_to_reproduce }}
+{{ finding.steps_to_reproduce|safe }}
 {% endif %}
 
 {% if finding.references %}
 *References*:
-{{ finding.references }}
+{{ finding.references|safe }}
 {% endif %}
 
 *Reporter:* [{{ finding.reporter|full_name}} ({{ finding.reporter.email }})|mailto:{{ finding.reporter.email }}]

@@ -1,14 +1,15 @@
+import contextlib
+import hashlib
 import json
 import re
-import hashlib
 
 from cvss import CVSS3
-from cvss.exceptions import CVSS3RHScoreDoesNotMatch, CVSS3RHMalformedError
+from cvss.exceptions import CVSS3RHMalformedError, CVSS3RHScoreDoesNotMatch
 
 from dojo.models import Finding
 
 
-class JFrogXrayApiSummaryArtifactParser(object):
+class JFrogXrayApiSummaryArtifactParser:
     # This function return a list of all the scan_type supported by your parser
     def get_scan_types(self):
         return ["JFrog Xray API Summary Artifact Scan"]
@@ -65,28 +66,23 @@ def get_item(
     impact_path = ImpactPath("", "", "")
 
     if "severity" in vulnerability:
-        if vulnerability["severity"] == "Unknown":
-            severity = "Informational"
-        else:
-            severity = vulnerability["severity"].title()
+        severity = "Informational" if vulnerability["severity"] == "Unknown" else vulnerability["severity"].title()
     else:
         severity = "Informational"
 
     # Some entries have no CVE entries, despite they exist. Example
     # CVE-2017-1000502.
     cves = vulnerability.get("cves", [])
-    vulnerability_ids = list()
+    vulnerability_ids = []
     if cves:
         if len(cves[0].get("cwe", [])) > 0:
             cwe = decode_cwe_number(cves[0].get("cwe", [])[0])
         if "cvss_v3" in cves[0]:
             cvss_v3 = cves[0]["cvss_v3"]
-            try:
+            # Note: Xray sometimes takes over malformed cvss scores like `5.9` that can not be parsed.
+            #       Without the try-except block here the whole import of all findings would fail.
+            with contextlib.suppress(CVSS3RHScoreDoesNotMatch, CVSS3RHMalformedError):
                 cvssv3 = CVSS3.from_rh_vector(cvss_v3).clean_vector()
-            except (CVSS3RHScoreDoesNotMatch, CVSS3RHMalformedError):
-                # Note: Xray sometimes takes over malformed cvss scores like `5.9` that can not be parsed.
-                #       Without the try-except block here the whole import of all findings would fail.
-                pass
 
     impact_paths = vulnerability.get("impact_path", [])
     if len(impact_paths) > 0:
@@ -98,7 +94,7 @@ def get_item(
             artifact_sha256
             + impact_path.name
             + impact_path.version
-            + vulnerability["issue_id"]
+            + vulnerability["issue_id"],
         )
         vuln_id_from_tool = vulnerability["issue_id"]
     elif cve:
@@ -108,7 +104,7 @@ def get_item(
             artifact_sha256
             + impact_path.name
             + impact_path.version
-            + vulnerability["summary"]
+            + vulnerability["summary"],
         )
         vuln_id_from_tool = ""
     result.update(unique_id.encode())
@@ -138,7 +134,7 @@ def get_item(
         finding.unsaved_vulnerability_ids = vulnerability_ids
 
     # Add vulnerability ids
-    vulnerability_ids = list()
+    vulnerability_ids = []
     if cves and "cve" in cves[0]:
         vulnerability_ids.append(cves[0]["cve"])
     if "issue_id" in vulnerability:
@@ -188,21 +184,21 @@ def decode_impact_path(path):
     if match:
         impact_path.sha = (match[1][:64]) if len(match[1]) > 64 else match[1]
 
-    if fullname.__contains__(".jar"):
+    if ".jar" in fullname:
         match = re.match(r"(.*)-", fullname, re.IGNORECASE)
         if match:
             impact_path.name = match[1]
         match = re.match(r".*-(.*).jar", fullname, re.IGNORECASE)
         if match:
             impact_path.version = match[1]
-    elif fullname.__contains__(":"):
+    elif ":" in fullname:
         match = re.match(r"(.*):", fullname, re.IGNORECASE)
         if match:
             impact_path.name = match[1]
         match = re.match(r".*:(.*)", fullname, re.IGNORECASE)
         if match:
             impact_path.version = match[1]
-    elif fullname.__contains__(".js"):
+    elif ".js" in fullname:
         match = re.match(r"(.*)-", fullname, re.IGNORECASE)
         if match:
             impact_path.name = match[1]

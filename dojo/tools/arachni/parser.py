@@ -7,8 +7,10 @@ from django.utils.encoding import force_str
 from dojo.models import Endpoint, Finding
 
 
-class ArachniParser(object):
-    """Arachni Web Scanner (http://arachni-scanner.com/wiki)
+class ArachniParser:
+
+    """
+    Arachni Web Scanner (http://arachni-scanner.com/wiki)
 
     Reports are generated with arachni_reporter tool:
     `./arachni_reporter --reporter 'json' js.com.afr`
@@ -32,18 +34,14 @@ class ArachniParser(object):
         report_date = None
         if "finish_datetime" in tree:
             report_date = datetime.strptime(
-                tree.get("finish_datetime"), "%Y-%m-%d %H:%M:%S %z"
+                tree.get("finish_datetime"), "%Y-%m-%d %H:%M:%S %z",
             )
         for node in tree["issues"]:
             item = self.get_item(node, report_date)
             dupe_key = item.severity + item.title
             if dupe_key in items:
-                items[dupe_key].unsaved_endpoints = (
-                    items[dupe_key].unsaved_endpoints + item.unsaved_endpoints
-                )
-                items[dupe_key].unsaved_req_resp = (
-                    items[dupe_key].unsaved_req_resp + item.unsaved_req_resp
-                )
+                items[dupe_key].unsaved_endpoints += item.unsaved_endpoints
+                items[dupe_key].unsaved_req_resp += item.unsaved_req_resp
                 items[dupe_key].nb_occurences += 1
             else:
                 items[dupe_key] = item
@@ -74,7 +72,7 @@ class ArachniParser(object):
                 resp += str(key) + ": " + str(value) + "\n\n"
 
         resp += "\n\n\n" + force_str(respz["body"])
-        unsaved_req_resp = list()
+        unsaved_req_resp = []
 
         if request is not None and respz is not None:
             unsaved_req_resp.append({"req": req, "resp": resp})
@@ -85,9 +83,7 @@ class ArachniParser(object):
         description = html2text.html2text(description)
 
         remediation = (
-            item_node["remedy_guidance"]
-            if "remedy_guidance" in item_node
-            else "n/a"
+            item_node.get("remedy_guidance", "n/a")
         )
         if remediation:
             remediation = html2text.html2text(remediation)
@@ -103,7 +99,7 @@ class ArachniParser(object):
             references = html2text.html2text(references)
 
         severity = item_node.get("severity", "Info").capitalize()
-        if "Informational" == severity:
+        if severity == "Informational":
             severity = "Info"
 
         # Finding and Endpoint objects returned have not been saved to the

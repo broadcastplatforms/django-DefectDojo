@@ -1,13 +1,13 @@
-import json
 import hashlib
+import json
 from datetime import datetime
-from dojo.models import Finding, Endpoint
+
+from dojo.models import Endpoint, Finding
 
 
-class GitlabDastParser(object):
-    """
-    Import GitLab DAST Report in JSON format
-    """
+class GitlabDastParser:
+
+    """Import GitLab DAST Report in JSON format"""
 
     def get_scan_types(self):
         return ["GitLab DAST Report"]
@@ -34,14 +34,12 @@ class GitlabDastParser(object):
             item = self.get_item(node, test, scanner)
 
             item_key = hashlib.sha256(
-                "|".join(
-                    [item.severity, item.title, item.description]
-                ).encode()
+                f"{item.severity}|{item.title}|{item.description}".encode(),
             ).hexdigest()
 
             if item_key in items:
                 items[item_key].unsaved_endpoints.extend(
-                    item.unsaved_endpoints
+                    item.unsaved_endpoints,
                 )
                 items[item_key].nb_occurences += 1
             else:
@@ -59,13 +57,13 @@ class GitlabDastParser(object):
             "Unknown": 8,  # Tentative
             "Ignore": 10,  # Tentative
         }
-        return switcher.get(confidence, None)
+        return switcher.get(confidence)
 
     # iterating through properties of each vulnerability
     def get_item(self, vuln, test, scanner):
         # scanner_confidence
         scanner_confidence = self.get_confidence_numeric(
-            vuln.get("confidence", "Could not be determined")
+            vuln.get("confidence", "Could not be determined"),
         )
 
         # description
@@ -85,11 +83,15 @@ class GitlabDastParser(object):
             static_finding=False,
             dynamic_finding=True,
         )
-
+        # request response
+        request, response = self.prepare_request_response(vuln.get("evidence"))
+        if request is not None:
+            finding.unsaved_req_resp = []
+            finding.unsaved_req_resp.append({"req": str(request), "resp": str(response)})
         # date
         if "discovered_at" in vuln:
             finding.date = datetime.strptime(
-                vuln["discovered_at"], "%Y-%m-%dT%H:%M:%S.%f"
+                vuln["discovered_at"], "%Y-%m-%dT%H:%M:%S.%f",
             )
 
         # id
@@ -98,7 +100,7 @@ class GitlabDastParser(object):
 
         # title
         finding.title = (
-            vuln["name"] if "name" in vuln else finding.unique_id_from_tool
+            vuln.get("name", finding.unique_id_from_tool)
         )
         # cwe
         for identifier in vuln["identifiers"]:
@@ -127,3 +129,20 @@ class GitlabDastParser(object):
             finding.mitigation = vuln["solution"]
 
         return finding
+
+    def prepare_request_response(self, evidence):
+        if evidence == []:
+            return None, None
+        request = evidence.get("request")
+        request_headers = request.get("headers", [])
+        reqHeaders = ""
+        for header in request_headers:
+            reqHeaders += "                name: " + header["name"] + " | value: " + header["value"] + "\n"
+        returnrequest = "Request Headers:\n" + str(reqHeaders) + "\nRequest Method: " + str(request.get("method")) + "\nRequest URL: " + str(request.get("url"))
+        response = evidence.get("response")
+        response_headers = response.get("headers", [])
+        respHeaders = ""
+        for header in response_headers:
+            respHeaders += "                name: " + header["name"] + " | value: " + header["value"] + "\n"
+        returnresponse = "Response Headers:\n" + str(respHeaders) + "\nResponse Phrase: " + str(response.get("reason_phrase")) + "\nResponse Status Code: " + str(response.get("status_code"))
+        return returnrequest, returnresponse

@@ -1,17 +1,18 @@
-import re
 import hashlib
 import logging
+import re
 
 from defusedxml.ElementTree import parse
 
 from dojo.models import Endpoint, Finding
 
-
 logger = logging.getLogger(__name__)
 
 
-class WapitiParser(object):
-    """The web-application vulnerability scanner
+class WapitiParser:
+
+    """
+    The web-application vulnerability scanner
 
     see: https://wapiti.sourceforge.io/
     """
@@ -31,9 +32,8 @@ class WapitiParser(object):
         root = tree.getroot()
         # check if it is
         if "report" not in root.tag:
-            raise ValueError(
-                "This doesn't seem to be a valid Wapiti XML file."
-            )
+            msg = "This doesn't seem to be a valid Wapiti XML file."
+            raise ValueError(msg)
 
         severity_mapping = {
             "4": "Critical",
@@ -45,7 +45,7 @@ class WapitiParser(object):
 
         url = root.findtext('report_infos/info[@name="target"]')
 
-        dupes = dict()
+        dupes = {}
         for vulnerability in root.findall("vulnerabilities/vulnerability"):
             category = vulnerability.attrib["name"]
             description = vulnerability.findtext("description")
@@ -58,7 +58,7 @@ class WapitiParser(object):
                 if reference_title.startswith("CWE"):
                     cwe = self.get_cwe(reference_title)
                 references.append(
-                    f"* [{reference_title}]({reference.findtext('url')})"
+                    f"* [{reference_title}]({reference.findtext('url')})",
                 )
             references = "\n".join(references)
 
@@ -66,10 +66,7 @@ class WapitiParser(object):
                 title = category + ": " + entry.findtext("info")
                 # get numerical severity.
                 num_severity = entry.findtext("level")
-                if num_severity in severity_mapping:
-                    severity = severity_mapping[num_severity]
-                else:
-                    severity = "Info"
+                severity = severity_mapping.get(num_severity, "Info")
 
                 finding = Finding(
                     title=title,
@@ -86,12 +83,12 @@ class WapitiParser(object):
                 finding.unsaved_endpoints = [Endpoint.from_uri(url)]
 
                 finding.unsaved_req_resp = [
-                    {"req": entry.findtext("http_request"), "resp": ""}
+                    {"req": entry.findtext("http_request"), "resp": ""},
                 ]
 
                 # make dupe hash key
                 dupe_key = hashlib.sha256(
-                    str(description + title + severity).encode("utf-8")
+                    str(description + title + severity).encode("utf-8"),
                 ).hexdigest()
                 # check if dupes are present.
                 if dupe_key in dupes:
@@ -107,8 +104,7 @@ class WapitiParser(object):
     @staticmethod
     def get_cwe(val):
         # Match only the first CWE!
-        cweSearch = re.search("CWE-(\\d+)", val, re.IGNORECASE)
+        cweSearch = re.search(r"CWE-(\d+)", val, re.IGNORECASE)
         if cweSearch:
             return int(cweSearch.group(1))
-        else:
-            return None
+        return None

@@ -1,13 +1,13 @@
-#!/bin/sh
+#!/bin/bash
 # Run available unittests with a setup for CI/CD:
 # - Fail if migrations are not created
 # - Exit container after running tests to allow exit code to propagate as test result
 # set -x
-# set -e
+set -e
 # set -v
 
-
 . /secret-file-loader.sh
+. /reach_database.sh
 
 cd /app || exit
 # Unset the database URL so that we can force the DD_TEST_DATABASE_NAME (see django "DATABASES" configuration in settings.dist.py)
@@ -21,6 +21,8 @@ unset DD_CELERY_BROKER_URL
 #   echo "Creating settings.py"
 #   cp dojo/settings/settings.dist.py dojo/settings/settings.py
 # fi
+
+wait_for_database_to_be_reachable
 
 python3 manage.py spectacular --fail-on-warn > /dev/null || {
     cat <<-EOF
@@ -61,7 +63,7 @@ You made changes to the models without creating a DB migration for them.
 
 If you're not familiar with migrations in Django, please read the
 great documentation thoroughly:
-https://docs.djangoproject.com/en/1.11/topics/migrations/
+https://docs.djangoproject.com/en/5.0/topics/migrations/
 
 ********************************************************************************
 
@@ -74,10 +76,13 @@ python3 manage.py migrate
 # --parallel fails on GitHub Actions
 #python3 manage.py test unittests -v 3 --no-input --parallel
 
-echo "Swagger Schema Tests - Broken"
-echo "------------------------------------------------------------"
-python3 manage.py test unittests -v 3 --keepdb --no-input --tag broken && true
-
 echo "Unit Tests"
 echo "------------------------------------------------------------"
-python3 manage.py test unittests -v 3 --keepdb --no-input --exclude-tag broken
+
+# Removing parallel and shuffle for now to maintain stability
+python3 manage.py test unittests -v 3 --keepdb --no-input --exclude-tag="non-parallel" || {
+    exit 1;
+}
+python3 manage.py test unittests -v 3 --keepdb --no-input --tag="non-parallel" || {
+    exit 1;
+}

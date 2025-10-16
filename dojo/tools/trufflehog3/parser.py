@@ -4,7 +4,7 @@ import json
 from dojo.models import Finding
 
 
-class TruffleHog3Parser(object):
+class TruffleHog3Parser:
     def get_scan_types(self):
         return ["Trufflehog3 Scan"]
 
@@ -17,7 +17,7 @@ class TruffleHog3Parser(object):
     def get_findings(self, filename, test):
         data = json.load(filename)
 
-        dupes = dict()
+        dupes = {}
 
         for json_data in data:
             if json_data.get("reason"):
@@ -25,7 +25,8 @@ class TruffleHog3Parser(object):
             elif json_data.get("rule"):
                 self.get_finding_current(json_data, test, dupes)
             else:
-                raise ValueError("Format is not recognized for Trufflehog3")
+                msg = "Format is not recognized for Trufflehog3"
+                raise ValueError(msg)
 
         return list(dupes.values())
 
@@ -71,7 +72,7 @@ class TruffleHog3Parser(object):
 
         if dupe_key in dupes:
             finding = dupes[dupe_key]
-            finding.description = finding.description + description
+            finding.description += description
             finding.nb_occurences += 1
             dupes[dupe_key] = finding
         else:
@@ -100,10 +101,7 @@ class TruffleHog3Parser(object):
             severity = severity.capitalize()
         file = json_data.get("path")
         line = json_data.get("line")
-        if line:
-            line = int(line)
-        else:
-            line = 0
+        line = int(line) if line else 0
         secret = json_data.get("secret")
         context = json_data.get("context")
         json_data.get("id")
@@ -127,7 +125,7 @@ class TruffleHog3Parser(object):
             if len(commit_message.split("\n")) > 1:
                 description += (
                     "**Commit message:** "
-                    + "\n```\n"
+                    "\n```\n"
                     + commit_message.replace("```", "\\`\\`\\`")
                     + "\n```\n"
                 )
@@ -141,7 +139,7 @@ class TruffleHog3Parser(object):
             description = description[:-1]
 
         dupe_key = hashlib.md5(
-            (title + secret + severity + str(line)).encode("utf-8")
+            (title + secret + severity + str(line)).encode("utf-8"),
         ).hexdigest()
 
         if dupe_key in dupes:
@@ -156,7 +154,7 @@ class TruffleHog3Parser(object):
                 title=title,
                 test=test,
                 cwe=798,
-                description=description,
+                description=description.replace("\x00", "\uFFFD"),
                 severity=severity,
                 mitigation="Secrets and passwords should be stored in a secure vault or secure storage.",
                 impact="This weakness can lead to the exposure of resources or functionality to unintended actors, possibly providing attackers with sensitive information or even execute arbitrary code.",

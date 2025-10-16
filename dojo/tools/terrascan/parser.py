@@ -1,12 +1,12 @@
-import json
 import hashlib
+import json
+
 from dojo.models import Finding
 
 
-class TerrascanParser(object):
-    """
-    A class that can be used to parse the terrascan JSON report file
-    """
+class TerrascanParser:
+
+    """A class that can be used to parse the terrascan JSON report file"""
 
     # table to match tfsec severity to DefectDojo severity
     SEVERITY = {
@@ -28,16 +28,14 @@ class TerrascanParser(object):
         data = json.load(filename)
         dupes = {}
         if "results" not in data and "violations" not in data.get("results"):
-            raise ValueError("missing mandatory attribute 'results'")
+            msg = "missing mandatory attribute 'results'"
+            raise ValueError(msg)
         if data.get("results").get("violations") is None:
-            return list()
+            return []
         for item in data.get("results").get("violations"):
             rule_name = item.get("rule_name")
             description = item.get("description")
-            if item.get("severity") in self.SEVERITY:
-                severity = self.SEVERITY[item.get("severity")]
-            else:
-                severity = "Info"
+            severity = self.SEVERITY.get(item.get("severity"), "Info")
             rule_id = item.get("rule_id")
             category = item.get("category")
             resource_name = item.get("resource_name")
@@ -53,7 +51,7 @@ class TerrascanParser(object):
                     + resource_type
                     + file
                     + str(line)
-                ).encode("utf-8")
+                ).encode("utf-8"),
             ).hexdigest()
 
             if dupe_key in dupes:

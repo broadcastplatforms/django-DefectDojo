@@ -1,6 +1,7 @@
 ---
 sensitiveCodepaths:
-  - 'dojo/object/*.py' # FIXME
+  - 'dojo/object/urls.py'
+  - 'dojo/object/views.py'
   - 'dojo/announcement/*.py'
   - 'dojo/api_v2/*.py'
   - 'dojo/api_v2/**/*.py'
@@ -51,6 +52,7 @@ sensitiveCodepaths:
   - 'docker/entrypoint-celery-beat.sh'
   - 'docker/entrypoint-celery-worker.sh'
   - 'docker/entrypoint-initializer.sh'
+  - 'docker/entrypoint-first-boot.sh'
   - 'docker/entrypoint-nginx.sh'
   - 'docker/entrypoint-uwsgi.sh'
   - 'docker/wait-for-it.sh'
@@ -58,10 +60,13 @@ allowedAuthors:
   usernames:
     - mtesauro
     - devGregA
-    - grendel513
     - cneill
     - Maffooch
-    - blakeowens
+    - blakeaowens
+    - kiblik
+    - dsever
+    - dogboat
+    - hblankenship
+    - valentijnscholten
 notificationList:
   - '@mtesauro'
-  - '@grendel513'

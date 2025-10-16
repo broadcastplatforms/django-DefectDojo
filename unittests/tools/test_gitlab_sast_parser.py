@@ -1,18 +1,18 @@
-from ..dojo_test_case import DojoTestCase, get_unit_tests_path
-from dojo.tools.gitlab_sast.parser import GitlabSastParser
 from dojo.models import Test
+from dojo.tools.gitlab_sast.parser import GitlabSastParser
+from unittests.dojo_test_case import DojoTestCase, get_unit_tests_scans_path
 
 
 class TestGitlabSastParser(DojoTestCase):
 
     def test_parse_file_with_no_vuln_has_no_findings(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-0-vuln.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-0-vuln.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
         self.assertEqual(0, len(findings))
 
     def test_parse_file_with_one_vuln_has_one_finding_v14(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-1-vuln_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-1-vuln_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
         self.assertEqual(1, len(findings))
@@ -21,7 +21,7 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("Critical", finding.severity)
 
     def test_parse_file_with_one_vuln_has_one_finding_v15(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-1-vuln_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-1-vuln_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
         self.assertEqual(1, len(findings))
@@ -30,10 +30,10 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("Critical", finding.severity)
 
     def test_parse_file_with_multiple_vuln_has_multiple_findings_v14(self):
-        with open(f"{get_unit_tests_path()}/scans/gitlab_sast/gl-sast-report-many-vuln_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-many-vuln_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
-        self.assertTrue(3, len(findings))
+        self.assertEqual(219, len(findings))
         finding = findings[0]
         self.assertEqual("Password in URL", finding.title)
         self.assertEqual("Critical", finding.severity)
@@ -45,10 +45,10 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("Critical", finding.severity)
 
     def test_parse_file_with_multiple_vuln_has_multiple_findings_v15(self):
-        with open(f"{get_unit_tests_path()}/scans/gitlab_sast/gl-sast-report-many-vuln_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-many-vuln_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
-        self.assertTrue(3, len(findings))
+        self.assertEqual(219, len(findings))
         finding = findings[0]
         self.assertEqual("Password in URL", finding.title)
         self.assertEqual("Critical", finding.severity)
@@ -60,12 +60,13 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("Critical", finding.severity)
 
     def test_parse_file_with_various_confidences_v14(self):
-        with open(f"{get_unit_tests_path()}/scans/gitlab_sast/gl-sast-report-confidence_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-confidence_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
-        self.assertTrue(len(findings) == 8)
+        self.assertEqual(len(findings), 8)
         for item in findings:
-            self.assertTrue(item.cwe is None or isinstance(item.cwe, int))
+            if item.cwe:
+                self.assertIsInstance(item.cwe, int)
         finding = findings[3]
         self.assertEqual("Tentative", finding.get_scanner_confidence_text())
         finding = findings[4]
@@ -78,12 +79,13 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("Certain", finding.get_scanner_confidence_text())
 
     def test_parse_file_with_various_confidences_v15(self):
-        with open(f"{get_unit_tests_path()}/scans/gitlab_sast/gl-sast-report-confidence_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-confidence_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
-        self.assertTrue(len(findings) == 8)
+        self.assertEqual(len(findings), 8)
         for item in findings:
-            self.assertTrue(item.cwe is None or isinstance(item.cwe, int))
+            if item.cwe:
+                self.assertIsInstance(item.cwe, int)
         finding = findings[3]
         self.assertEqual("", finding.get_scanner_confidence_text())
         finding = findings[4]
@@ -96,25 +98,25 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("", finding.get_scanner_confidence_text())
 
     def test_parse_file_with_various_cwes_v14(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-cwe_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-cwe_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
-        self.assertTrue(len(findings) == 3)
+        self.assertEqual(len(findings), 3)
         self.assertEqual(79, findings[0].cwe)
         self.assertEqual(89, findings[1].cwe)
         self.assertEqual(None, findings[2].cwe)
 
     def test_parse_file_with_various_cwes_v15(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-cwe_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-cwe_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
-        self.assertTrue(len(findings) == 3)
+        self.assertEqual(len(findings), 3)
         self.assertEqual(79, findings[0].cwe)
         self.assertEqual(89, findings[1].cwe)
         self.assertEqual(None, findings[2].cwe)
 
     def test_parse_file_issue4336_v14(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report_issue4344_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report_issue4344_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
         self.assertEqual(1, len(findings))
@@ -122,7 +124,7 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("[None severity] Potential XSS vulnerability", finding.title)
 
     def test_parse_file_issue4336_v15(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report_issue4344_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report_issue4344_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             findings = parser.get_findings(testfile, Test())
         self.assertEqual(1, len(findings))
@@ -130,7 +132,7 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual("[None severity] Potential XSS vulnerability", finding.title)
 
     def test_without_scan_v14(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-1-vuln_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-1-vuln_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             tests = parser.get_tests(None, testfile)
         self.assertEqual(1, len(tests))
@@ -142,7 +144,7 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual(1, len(findings))
 
     def test_without_scan_v15(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-1-vuln_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-1-vuln_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             tests = parser.get_tests(None, testfile)
         self.assertEqual(1, len(tests))
@@ -154,7 +156,7 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual(1, len(findings))
 
     def test_with_scan_v14(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-confidence_v14.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-confidence_v14.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             tests = parser.get_tests(None, testfile)
         self.assertEqual(1, len(tests))
@@ -166,7 +168,7 @@ class TestGitlabSastParser(DojoTestCase):
         self.assertEqual(8, len(findings))
 
     def test_with_scan_v15(self):
-        with open("unittests/scans/gitlab_sast/gl-sast-report-confidence_v15.json") as testfile:
+        with open(get_unit_tests_scans_path("gitlab_sast") / "gl-sast-report-confidence_v15.json", encoding="utf-8") as testfile:
             parser = GitlabSastParser()
             tests = parser.get_tests(None, testfile)
         self.assertEqual(1, len(tests))

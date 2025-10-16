@@ -1,9 +1,10 @@
-import json
 import hashlib
+import json
+
 from dojo.models import Finding
 
 
-class CodeCheckerParser(object):
+class CodeCheckerParser:
     def get_scan_types(self):
         return ["Codechecker Report native"]
 
@@ -18,11 +19,12 @@ class CodeCheckerParser(object):
 
     def get_findings(self, json_output, test):
         if json_output is None:
-            return
+            return None
 
         tree = self.parse_json(json_output)
         if tree:
             return self.get_items(tree)
+        return None
 
     def parse_json(self, json_output):
         data = json_output.read()
@@ -48,24 +50,22 @@ def get_item(vuln):
     if "type" in vuln:
         vuln_type = vuln.get("type", "None")
         if vuln_type != "None":
-            description += "Type: {}\n".format(vuln_type)
+            description += f"Type: {vuln_type}\n"
 
     if "message" in vuln:
         description += "{}\n".format(vuln["message"])
 
     location = vuln["file"]
-    file_path = location["path"] if "path" in location else None
+    file_path = location.get("path", None)
 
     if file_path:
-        description += "File path: {}\n".format(file_path)
+        description += f"File path: {file_path}\n"
 
-    line = vuln["line"] if "line" in vuln else None
-    column = vuln["column"] if "column" in vuln else None
+    line = vuln.get("line", None)
+    column = vuln.get("column", None)
 
     if line is not None and column is not None:
-        description += "Location in file: line {}, column {}\n".format(
-            line, column
-        )
+        description += f"Location in file: line {line}, column {column}\n"
 
     sast_source_line = line
 
@@ -76,21 +76,19 @@ def get_item(vuln):
     risk_accepted = (
         review_status == "intentional"
     )  # not confirmed, not a bug, there are some reasons to make this code in this manner
-    false_positive = review_status in [
+    false_positive = review_status in {
         "false_positive",
         "suppressed",
-    ]  # this finding is false positive
+    }  # this finding is false positive
     active = not false_positive and not risk_accepted
 
-    hash = hashlib.sha256()
     unique_id = (
         vuln["report_hash"]
         + "."
         + vuln["analyzer_result_file_path"]
         + description
     )
-    hash.update(unique_id.encode())
-    unique_id_from_tool = hash.hexdigest()
+    unique_id_from_tool = hashlib.sha256(unique_id.encode()).hexdigest()
 
     title = ""
     if "checker_name" in vuln:
@@ -100,7 +98,7 @@ def get_item(vuln):
     else:
         title = unique_id_from_tool
 
-    finding = Finding(
+    return Finding(
         title=title,
         description=description,
         severity=severity,
@@ -119,8 +117,6 @@ def get_item(vuln):
             vuln["analyzer_name"],
         ],
     )
-
-    return finding
 
 
 def get_mapped_severity(severity):

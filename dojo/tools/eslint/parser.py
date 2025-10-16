@@ -3,7 +3,7 @@ import json
 from dojo.models import Finding
 
 
-class ESLintParser(object):
+class ESLintParser:
     def get_scan_types(self):
         return ["ESLint Scan"]
 
@@ -16,10 +16,9 @@ class ESLintParser(object):
     def _convert_eslint_severity_to_dojo_severity(self, eslint_severity):
         if eslint_severity == 2:
             return "High"
-        elif eslint_severity == 1:
+        if eslint_severity == 1:
             return "Medium"
-        else:
-            return "Info"
+        return "Info"
 
     def get_findings(self, filename, test):
         tree = filename.read()
@@ -28,7 +27,7 @@ class ESLintParser(object):
         except Exception:
             data = json.loads(tree)
 
-        items = list()
+        items = []
         for item in data:
             findingdetail = ""
 
@@ -36,10 +35,7 @@ class ESLintParser(object):
                 continue
 
             for message in item["messages"]:
-                if message["message"] is None:
-                    title = str("Finding Not defined")
-                else:
-                    title = str(message["message"])
+                title = "Finding Not defined" if message["message"] is None else str(message["message"])
 
                 if message["ruleId"] is not None:
                     title = title + " Test ID: " + str(message["ruleId"])
@@ -48,7 +44,7 @@ class ESLintParser(object):
                 findingdetail += "Line number: " + str(message["line"]) + "\n"
 
                 sev = self._convert_eslint_severity_to_dojo_severity(
-                    message["severity"]
+                    message["severity"],
                 )
 
                 find = Finding(

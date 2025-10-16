@@ -2,10 +2,12 @@ import json
 import textwrap
 
 from dateutil.parser import parse
+
 from dojo.models import Finding
 
 
-class GitlabContainerScanParser(object):
+class GitlabContainerScanParser:
+
     """
     GitLab's container scanning report
     See more: https://gitlab.com/gitlab-org/security-products/security-report-schemas/-/blob/master/dist/container-scanning-report-format.json
@@ -21,7 +23,7 @@ class GitlabContainerScanParser(object):
         return "GitLab Container Scan report file can be imported in JSON format (option --json)."
 
     def _get_dependency_version(self, dependency):
-        return dependency["version"] if "version" in dependency else ""
+        return dependency.get("version", "")
 
     def _get_dependency_name(self, dependency):
         if "package" in dependency and "name" in dependency["package"]:
@@ -118,13 +120,13 @@ class GitlabContainerScanParser(object):
             dependency_name = self._get_dependency_name(dependency)
             if dependency_name:
                 finding.component_name = textwrap.shorten(
-                    dependency_name, width=190, placeholder="..."
+                    dependency_name, width=190, placeholder="...",
                 )
 
             dependency_version = self._get_dependency_version(dependency)
             if dependency_version:
                 finding.component_version = textwrap.shorten(
-                    dependency_version, width=90, placeholder="..."
+                    dependency_version, width=90, placeholder="...",
                 )
 
             if "solution" in vulnerability:
